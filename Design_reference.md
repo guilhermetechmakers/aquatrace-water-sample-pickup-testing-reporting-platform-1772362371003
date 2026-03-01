@@ -326,25 +326,250 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-typography, spacing, color tokens, and components.
-- Use clear status indicators for invoices and payments; provide actionable controls (edit, pay, send, export).
-- Ensure forms have inline validation, helpful error messages, and accessible labels.
-- Support mobile responsiveness for field entry and quick actions on page_015, page_016, and page_017.
+# Notifications & Alerts
 
-## Mandatory Coding Standards — Runtime Safety
+## Overview
+Build a comprehensive, scalable Notifications & Alerts subsystem for AquaTrace that drives email, SMS, and push communications around core events (pickup assigned/completed, lab results ready, approvals, invoices, SLA breaches). Support user preferences, channel batching/throttling, template management with localization, retry and dead-letter handling, and webhooks for external systems. Integrate with SendGrid for emails, Twilio for SMS/voice, and Firebase Cloud Messaging for push notifications. Provide web-based settings, a mobile-first Technician Dashboard, and ensure robust runtime safety as per project standards.
 
-CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
+## Components to Build
+- [ ] Email Engine
+  - Send transactional emails using SendGrid
+  - Template management with localization (default/en, with internationalization hooks)
+  - Events: verification, report delivery, invoice notifications, alerts
+  - Data injection into templates (customer name, invoice ID, pickup ID, dates, URLs)
+- [ ] SMS & Voice Engine
+  - Twilio integration for SMS alerts and optional voice calls for escalations
+  - Time-sensitive alerts: pickups, overdue invoices, SLA breaches
+  - Throttling and batching per user preferences
+  - Fallback to email if SMS fails (configurable)
+- [ ] Push Notifications
+  - Firebase Cloud Messaging (FCM) integration for mobile technicians and dashboards
+  - Real-time push on new assignments, approvals, billing alerts
+  - Web push for dashboards (modern browsers)
+  - Device token management, topic-based broadcasting, and per-user targeting
+- [ ] Preferences & Settings
+  - User-specific notification channels, thresholds, and retention
+  - System-level defaults and integrations (SendGrid, Twilio, FCM)
+  - Batch throttling rules (e.g., max N messages per hour) and blackout windows
+- [ ] Template Management
+  - Create, edit, localize, and version email templates
+  - Support placeholders with safe defaults and null handling
+  - Preview mode and WYSIWYG editor (plaintext and HTML)
+- [ ] Job & Event Dispatcher
+  - Event bus to trigger notifications on events: pickup_assigned, pickup_completed, lab_results_ready, approval_needed, invoice_created, invoice_paid, sla_breach
+  - Dead-letter queue for failed messages with retry policy
+  - Retry backoff strategy and escalation to admin if persistent failures
+- [ ] Webhook Integrations
+  - Webhook delivery for external systems on key events
+  - Retry policy and payload customization
+- [ ] Audit & Telemetry
+  - Logging of all notification attempts, outcomes, and retries
+  - Retry counts, latency metrics, success/failure dashboards
+- [ ] Admin & Settings UI Pages
+  - Settings & Preferences page (page_005)
+  - Admin notification configuration (integrations, templates, throttling) (page_011)
+  - Template management UI (page_013)
+  - Template localization & preview (page_017)
+  - Alerts & Analytics dashboard (page_018)
 
-1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null when there are no rows.
-2. Array methods: Never call on a value that could be null/undefined/non-array. Guard with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
-3. React useState for arrays/objects: Initialize with correct type — useState<Type[]>([]) for arrays; never use useState() or useState(null).
-4. API response shapes: Validate — const list = Array.isArray(response?.data) ? response.data : [].
-5. Optional chaining: Use obj?.property?.nested when accessing nested API or DB data.
-6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}.
+## Implementation Requirements
 
----
+### Frontend
+- [ ] Settings UI
+  - Per-user notification preferences (channels: Email, SMS, Push; do-not-disturb windows; throttling rules)
+  - Global/system defaults for channels, templates, and retention
+  - Integrations toggles (SendGrid, Twilio, FCM)
+  - Data retention policy editor (time windows, archival)
+  - Page integration: page_005 (Settings & Preferences) and cross-link to other admin pages
+- [ ] Template Editor
+  - Rich editors for Email templates with placeholders (customerName, invoiceId, pickupId, labResults, dueDate, etc.)
+  - Localization switcher (language selector) with fallback
+  - Live preview rendering with sample data
+  - Save as new version, publish, and rollback options
+  - Page: page_013
+- [ ] Technician Dashboard (Mobile)
+  - Mobile-first UI to view assigned pickups, capture sample readings, upload photos, and sync data
+  - In-app notifications center showing recent notifications (pending actions)
+  - Push-notification aware UI: show real-time alerts for new assignments or status changes
+  - Page: page_018
+- [ ] Admin/Dashboard UI
+  - View notification delivery statuses, retry queues, and dead-letter items
+  - Configure batch throttling, retention, and webhook endpoints
+  - Page: page_011, page_017
 
-If you need this prompt tailored to a specific tech stack (e.g., Next.js + Prisma + Supabase, or NestJS + PostgreSQL, or React Native mobile app with Expo), specify the stack and I will adjust the API contracts, data access patterns, and UI scaffolding accordingly while preserving the runtime safety rules.
+### Backend
+- [ ] Data Models (database tables)
+  - notifications: id, event_type, recipient_user_id, channel, status, attempt_count, max_attempts, last_attempt_at, payload (JSON), template_id, created_at, updated_at, fail_reason, is_dead_letter
+  - notification_channels: id, user_id, email, phone, push_token, preferred_channel, enabled, created_at, updated_at
+  - templates: id, name, language, subject, html_body, text_body, version, is_published, created_by, updated_by, created_at, updated_at
+  - events: id, type, payload (JSON), created_at
+  - webhooks: id, url, events_enabled (array), auth_secret, retries, timeout
+  - retries_log: id, notification_id, attempt_number, status, response, created_at, updated_at
+  - dead_letters: id, notification_id, reason, payload, created_at
+  - settings: id, key, value (JSON), scope (user/system), created_at, updated_at
+- [ ] API Endpoints
+  - POST /api/notifications/events -> enqueue event for processing
+  - GET /api/notifications/:id/status -> fetch delivery status
+  - POST /api/notifications/templates -> create/update template
+  - GET /api/notifications/templates?lang=&published -> fetch localized templates
+  - POST /api/notifications/webhooks -> register webhook
+  - POST /api/notifications/publish -> trigger manual dispatch for testing
+  - GET /api/notifications/audit -> fetch logs and metrics
+  - CRUD for user notification preferences: /api/users/:id/notifications/preferences
+- [ ] Event Dispatcher
+  - Consume events from a message queue or in-memory event bus
+  - Resolve recipient(s) from event payload
+  - Build channels per user preferences
+  - Render template with safe defaults; guard undefined values
+  - Dispatch in parallel with per-channel rate limits
+  - On failure: retry with exponential backoff up to max_attempts; on persistent failure, move to dead-letter and notify admin
+- [ ] Integrations
+  - Email: SendGrid API integration with template rendering
+  - SMS/Voice: Twilio integration with SMS and optional Voice calls for escalations
+  - Push: FCM device/token management and HTTP v1 API usage
+- [ ] Validation & Safety
+  - Validate all incoming payloads with schema checks
+  - Safely access data with nullish coalescing and Array.isArray guards
+  - Always initialize arrays/objects in state with proper defaults
+- [ ] Security
+  - OAuth/JWT protection for API endpoints
+  - Validation of webhook signatures
+  - Role-based access control for admin pages (5 login levels)
+- [ ] Data Integrity
+  - Normalize event payloads to a common shape for templates
+  - Store delivery outcomes and timestamps for reporting
+- [ ] Testing
+  - Unit tests for template rendering with missing fields
+  - Integration tests for SendGrid, Twilio, and FCM (sandbox)
+  - End-to-end tests simulating events and checking notification delivery statuses
+  - Resilience tests for retries and dead-letter routing
+
+### Integration
+- [ ] Event Flow
+  - Event producers ( pickup assigned/completed, lab results ready, approvals needed, invoices created/paid, SLA breach ) emit to /api/notifications/events
+  - Dispatcher validates event, fetches recipient preferences, determines channels, renders templates, and calls respective providers
+  - Each provider returns status; update notifications table and if needed trigger webhooks
+- [ ] Data Flow and Safety
+  - Use data ?? [] for any list fetched from Supabase-like sources
+  - Guard all arrays with Array.isArray() checks before mapping
+  - Ensure useState<Type[]>([]) defaults for any array state in React components
+  - Validate API responses: const list = Array.isArray(response?.data) ? response.data : []
+  - Use optional chaining for nested response properties
+- [ ] Dead-Letter & Retries
+  - On repeated failures, push notification to dead_letters and emit an alert to admins
+  - Expose metrics such as retry_count, last_error, next_retry_at
+
+### User Experience Flow
+1. Admin configures notification preferences and templates in Settings & Preferences (page_005).
+2. An event occurs (e.g., pickup assigned). The system enqueues the event via /api/notifications/events.
+3. Dispatcher derives recipients (technician, lab staff, customer) based on event payload and user preferences.
+4. For each recipient:
+   - Render appropriate template with safe defaults; if data missing, degrade gracefully.
+   - Send via enabled channels (Email, SMS, Push) respecting throttling and blackout windows.
+   - If success, mark notification as delivered; if partial, mark partial delivered and retry others.
+   - If failure after retries, push to dead-letter queue and notify admins via a webhook and a dashboard alert.
+5. For invoices and SLA breaches, schedule retries and notify customers with status updates and escalation paths (including optional voice calls via Twilio if configured).
+6. Webhooks notify external systems of the event outcomes with a reliable payload and authentication.
+7. Technician Dashboard shows real-time push notifications and in-app alerts; mobile app allows syncing of pickup data and photos, and displays pending notifications requiring action.
+
+### Technical Specifications
+
+- Data Models
+  - notifications: id (uuid), event_type (enum), recipient_user_id (uuid), channel (enum), status (enum: queued, in_progress, delivered, failed, deprecated), attempt_count (int), max_attempts (int), last_attempt_at (timestamp), payload (jsonb), template_id (uuid), created_at, updated_at, fail_reason (text), is_dead_letter (boolean)
+  - notification_channels: id, user_id, email (text), phone (text), push_token (text), preferred_channel (array of enums), enabled (boolean), created_at, updated_at
+  - templates: id, name, language, subject, html_body, text_body, version, is_published (boolean), created_by (uuid), updated_by (uuid), created_at, updated_at
+  - events: id, type (enum), payload (jsonb), created_at
+  - webhooks: id, url (text), events_enabled (text[]), auth_secret (text), retries (int), timeout (int seconds), created_at
+  - retries_log: id, notification_id, attempt_number, status, response (text), created_at, updated_at
+  - dead_letters: id, notification_id, reason (text), payload (jsonb), created_at
+  - settings: id, key (text), value (jsonb), scope (text: 'user'|'system'), created_at, updated_at
+
+- API Endpoints
+  - POST /api/notifications/events
+    - Body: { event_type: string, payload: object }
+    - Action: enqueue event; return 202
+  - GET /api/notifications/:id/status
+    - Return: { id, status, lastAttemptAt, attemptCount, failures: [ { time, reason } ] }
+  - POST /api/notifications/templates
+    - Body: { name, language, subject, html_body, text_body, version, is_published, template_id? }
+  - GET /api/notifications/templates?lang=&published
+    - Returns list with localization
+  - POST /api/notifications/webhooks
+    - Body: { url, events_enabled: string[], auth_secret }
+  - POST /api/notifications/publish
+    - Manually trigger dispatch for a test event
+  - GET /api/notifications/audit
+    - Query params for date range, event_type, status
+  - User Preferences: /api/users/:id/notifications/preferences
+    - PUT/PATCH to update channels, thresholds, and retention
+
+- Security
+  - OAuth2/JWT for API endpoints with role-based access control aligned to five login levels
+  - Webhook signature validation (HMAC) on inbound/outbound webhooks
+  - Rate limiting on public endpoints to protect against abuse
+  - Data validation with strict schemas; default values for missing fields
+  - Ensure all API responses are sanitized; never leak internal identifiers
+
+- Validation
+  - Input validation rules for event payloads and template data
+  - Ensure all array-heavy responses guard against null; use (items ?? []) and Array.isArray checks
+  - Use optional chaining for deeply nested fields
+  - Ensure destructuring with defaults: const { items = [], count = 0 } = response ?? {}
+
+- Acceptance Criteria
+  - [ ] All events generate notifications according to per-user preferences across Email, SMS, and Push channels
+  - [ ] Throttling rules prevent more than configured messages per hour per user
+  - [ ] Retry logic with exponential backoff and proper dead-letter routing
+  - [ ] Templates render safely even when payload fields are missing; placeholders replaced with defaults
+  - [ ] Webhooks deliver payloads reliably with proper retries and authentication
+  - [ ] Mobile Technician Dashboard shows real-time push alerts and supports offline sync
+  - [ ] Admin UI can manage templates, preferences, integrations, and view notification analytics
+  - [ ] All code guarded for null/undefined values in arrays and objects as per runtime safety guidelines
+
+- UI/UX Guidelines
+  - Consistent styling with the existing AquaTrace UI
+  - Accessible components with clear error states
+  - Inline validation and helpful error messages
+  - Preview modes for templates and localization
+  - Dashboard widgets for delivery metrics, retries, and dead-letter counts
+
+- Mandatory Coding Standards — Runtime Safety
+  - Supabase query results: Always use nullish coalescing — const items = data ?? []
+  - Array methods: Guard with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : []
+  - useState for arrays/objects: useState<Type[]>([]) for array state
+  - API response shapes: const list = Array.isArray(response?.data) ? response.data : []
+  - Optional chaining: obj?.property?.nested
+  - Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
+
+- Tech Stack Alignment
+  - Frontend: React (with hooks), TypeScript, centralized state management for notifications preferences and templates
+  - Backend: Node.js or NestJS (preferred for structured APIs), PostgreSQL (via Supabase-compatible layer), message queue (e.g., SQS/Kafka) or in-app event bus
+  - Email: SendGrid
+  - SMS/Voice: Twilio
+  - Push: Firebase Cloud Messaging
+  - Storage: Cloud storage for templates/assets
+  - Localization: i18n for emails and push content
+
+- Data Privacy & Compliance
+  - PII handling in templates and payloads
+  - Audit logs for notification delivery events
+  - Data retention controls per settings
+
+- Deliverables
+  - Fully functional notification subsystem with APIs, services, and queues
+  - Admin UI pages wired to Settings & Preferences, Template Management, and Analytics
+  - Mobile Technician Dashboard with push and offline sync support
+  - Documentation for developers and operations (setup, configs, troubleshooting)
+  - Tests: unit, integration, and end-to-end coverage for critical paths
+
+- Notes on Project Context
+  - AquaTrace workflow: pickups by Technician (GPS-enabled mobile), lab results, approvals by Lab Manager, invoicing, and customer reporting
+  - Five login roles: Technician, Lab Tech, Lab Manager, Admin, Customer Viewer
+  - Events to cover: pickup assigned/completed, lab results ready, approvals, invoices, SLA breaches
+  - Integrations: Twilio SMS/voice, SendGrid emails, FCM push; optional webhooks for external systems
+  - Associated pages: page_005, page_011, page_013, page_017, page_018
+
+If you’d like, I can produce a ready-to-run project skeleton (file structure, seed data, and example API handlers) aligned to this prompt, including TypeScript types, sample templates, and test stubs.
 
 ## Implementation Notes
 

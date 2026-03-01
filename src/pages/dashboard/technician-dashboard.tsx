@@ -13,19 +13,25 @@ import {
   CheckCircle,
   Clock,
   ListOrdered,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useRBAC } from '@/hooks/useRBAC'
 import { usePickupSamples, useSyncPickups } from '@/hooks/usePickupSamples'
+import { useMyNotifications, subscribeToNotifications } from '@/hooks/useNotifications'
+import { useAuth } from '@/contexts/auth-context'
+import { NOTIFICATION_EVENT_LABELS } from '@/types/notifications'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 
 export function TechnicianDashboardPage() {
   const { hasPermission } = useRBAC()
+  const { user } = useAuth()
   const { data, isLoading, refetch } = usePickupSamples()
+  const { data: notifData, refetch: refetchNotifs } = useMyNotifications(10)
   const syncMutation = useSyncPickups()
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -41,6 +47,11 @@ export function TechnicianDashboardPage() {
       window.removeEventListener('offline', onOffline)
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) return
+    return subscribeToNotifications(user.id, () => {}, refetchNotifs)
+  }, [user?.id, refetchNotifs])
 
   const canCreate = hasPermission('pickup', 'create')
   const pickups = data?.merged ?? []
@@ -64,9 +75,6 @@ export function TechnicianDashboardPage() {
   }, [pickups])
 
   const pendingCount = quickStats.pendingSubmissions
-  const hasNotifications = (pickups ?? []).some(
-    (p) => p.status === 'Rejected' || (p.synced && p.status === 'Synced')
-  )
 
   const handleSync = () => {
     if (!isOnline) {
@@ -327,24 +335,44 @@ export function TechnicianDashboardPage() {
             </CardContent>
           </Card>
 
-          {hasNotifications && (
-            <Card className="border-accent/30 bg-accent/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5 text-accent" />
-                  Notifications
-                </CardTitle>
-                <CardDescription>
-                  Lab results ready or rejected pickups
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/dashboard/pickups/samples">View samples</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          <Card className="border-accent/30 bg-accent/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-accent" />
+                Notifications Center
+              </CardTitle>
+              <CardDescription>
+                Recent alerts: pickups, lab results, approvals
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(notifData?.notifications ?? []).length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {(notifData?.notifications ?? []).slice(0, 5).map((n) => (
+                    <div
+                      key={n.id}
+                      className="flex items-center justify-between rounded-lg border border-border/50 bg-background/50 p-3 text-sm"
+                    >
+                      <span className="font-medium">
+                        {NOTIFICATION_EVENT_LABELS[n.eventType as keyof typeof NOTIFICATION_EVENT_LABELS] ?? n.eventType}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(n.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No recent notifications</p>
+              )}
+              <Button variant="outline" size="sm" asChild className="w-full">
+                <Link to="/dashboard/pickups/samples" className="flex items-center justify-center gap-2">
+                  View samples
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

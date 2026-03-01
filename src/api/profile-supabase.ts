@@ -169,15 +169,64 @@ export const profileSupabaseApi = {
   },
 
   getNotificationSettings: async (): Promise<NotificationSettings> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data } = await supabase
+      .from('notification_user_preferences')
+      .select('channels_enabled, event_preferences')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const ch = (data?.channels_enabled ?? {}) as Record<string, boolean>
+    const prefs = (data?.event_preferences ?? {}) as Record<string, boolean>
     return {
-      channels: { email: true, inApp: true, sms: false },
-      preferences: { accountAlerts: true, sampleUpdates: true, reportReady: true },
+      channels: {
+        email: ch?.email ?? true,
+        inApp: ch?.in_app ?? true,
+        sms: ch?.sms ?? false,
+      },
+      preferences: {
+        accountAlerts: prefs?.accountAlerts ?? true,
+        sampleUpdates: prefs?.sampleUpdates ?? true,
+        reportReady: prefs?.reportReady ?? true,
+      },
     }
   },
 
   updateNotificationSettings: async (
-    _updates: UpdateNotificationSettingsInput
+    updates: UpdateNotificationSettingsInput
   ): Promise<NotificationSettings> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data: existing } = await supabase
+      .from('notification_user_preferences')
+      .select('channels_enabled, event_preferences')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const currentCh = (existing?.channels_enabled ?? { email: true, in_app: true, sms: false }) as Record<string, boolean>
+    const currentPrefs = (existing?.event_preferences ?? {}) as Record<string, boolean>
+
+    const channelsEnabled = {
+      ...currentCh,
+      ...(updates.channels?.email !== undefined && { email: updates.channels.email }),
+      ...(updates.channels?.inApp !== undefined && { in_app: updates.channels.inApp }),
+      ...(updates.channels?.sms !== undefined && { sms: updates.channels.sms }),
+    }
+    const eventPreferences = { ...currentPrefs, ...(updates.preferences ?? {}) }
+
+    await supabase.from('notification_user_preferences').upsert(
+      {
+        user_id: user.id,
+        channels_enabled: channelsEnabled,
+        event_preferences: eventPreferences,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
+
     return profileSupabaseApi.getNotificationSettings()
   },
 

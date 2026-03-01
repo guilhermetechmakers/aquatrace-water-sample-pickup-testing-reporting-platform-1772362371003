@@ -21,6 +21,11 @@ import { LabResultsEntryPage } from '@/pages/dashboard/lab-results-entry'
 import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
 import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
 import { AdminBillingPage } from '@/pages/dashboard/admin/billing'
+import { AdminNotificationsPage } from '@/pages/dashboard/admin/notifications'
+import { AdminNotificationsConfigPage } from '@/pages/dashboard/admin/notifications-config'
+import { AdminTemplatesPage } from '@/pages/dashboard/admin/templates'
+import { TemplateLocalizationPage } from '@/pages/dashboard/admin/template-localization'
+import { AlertsDashboardPage } from '@/pages/dashboard/alerts'
 import { LabManagerDashboardPage } from '@/pages/dashboard/lab-manager-dashboard'
 import { ApprovalDetailsPage } from '@/pages/dashboard/approval-details'
 import { ReportsPage } from '@/pages/dashboard/reports'
@@ -168,8 +173,13 @@ export const router = createBrowserRouter([
           { index: true, element: <AdminPage /> },
           { path: 'thresholds', element: <ThresholdConfigPage /> },
           { path: 'billing', element: <AdminBillingPage /> },
+          { path: 'notifications', element: <AdminNotificationsPage /> },
+          { path: 'notifications-config', element: <AdminNotificationsConfigPage /> },
+          { path: 'templates', element: <AdminTemplatesPage /> },
+          { path: 'template-localization/:templateId', element: <TemplateLocalizationPage /> },
         ],
       },
+      { path: 'alerts', element: <AlertsDashboardPage /> },
       { path: 'users', element: <AdminPage /> },
       { path: 'audit', element: <AdminPage /> },
       { path: 'settings', element: <Navigate to="/dashboard/profile" replace /> },
