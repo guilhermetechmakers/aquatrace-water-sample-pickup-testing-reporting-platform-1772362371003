@@ -53,7 +53,7 @@ export function AnalyticsDetailsPage() {
     filters,
     'week'
   )
-  const { data: slaData, isLoading: slaLoading } = useSLAComplianceByCustomer(filters)
+  const { data: slaData, isLoading: slaLoading, refetch: refetchSLA } = useSLAComplianceByCustomer(filters)
   const { data: errorData, isLoading: errorLoading } = useErrorRates(filters)
 
   const slaRows = (slaData?.data ?? []).map((c) => ({
@@ -125,6 +125,8 @@ export function AnalyticsDetailsPage() {
             title="SLA Compliance by Customer"
             data={slaRows}
             isLoading={slaLoading}
+            onEmptyStateAction={refetchSLA}
+            onRetry={refetchSLA}
           />
           <DataTable
             title="Customer SLA Details"

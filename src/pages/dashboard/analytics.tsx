@@ -76,7 +76,7 @@ export function AnalyticsPage() {
   )
   const { data: errorData, isLoading: errorLoading } = useErrorRates(filters)
   const { data: exportsData, isLoading: exportsLoading, isError: exportsError, error: exportsErrorObj } = useExports()
-  const { data: slaComplianceData, isLoading: slaLoading } = useSLAComplianceByCustomer(filters)
+  const { data: slaComplianceData, isLoading: slaLoading, refetch: refetchSLA } = useSLAComplianceByCustomer(filters)
 
   const summary = kpiData?.summary ?? {
     avgTurnaroundTimeHours: 0,
@@ -226,6 +226,8 @@ export function AnalyticsPage() {
             onTime: c.onTime,
           }))}
           isLoading={slaLoading}
+          onEmptyStateAction={refetchSLA}
+          onRetry={refetchSLA}
         />
       </div>
 
