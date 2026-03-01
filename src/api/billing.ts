@@ -163,6 +163,9 @@ export async function fetchBillingCustomer(id: string): Promise<BillingCustomer 
 export async function createBillingCustomer(payload: CustomerCreatePayload): Promise<BillingCustomer | null> {
   if (!isSupabaseConfigured()) return null
 
+  const taxInfo = payload.taxInfo ?? (payload.taxId || payload.taxExempt
+    ? { taxId: payload.taxId, taxExempt: payload.taxExempt, taxExemptReason: payload.taxExemptReason }
+    : {})
   const { data, error } = await supabase
     .from('customers')
     .insert({
@@ -171,6 +174,7 @@ export async function createBillingCustomer(payload: CustomerCreatePayload): Pro
       billing_address: payload.billingAddress ?? {},
       currency: payload.currency ?? 'USD',
       billing_contact: payload.billingContact ?? null,
+      tax_info: taxInfo,
     })
     .select()
     .single()
@@ -192,6 +196,14 @@ export async function updateBillingCustomer(
   if (payload.billingAddress != null) update.billing_address = payload.billingAddress
   if (payload.currency != null) update.currency = payload.currency
   if (payload.billingContact != null) update.billing_contact = payload.billingContact
+  if (payload.taxInfo != null) update.tax_info = payload.taxInfo
+  else if (payload.taxId != null || payload.taxExempt != null) {
+    update.tax_info = {
+      taxId: payload.taxId,
+      taxExempt: payload.taxExempt,
+      taxExemptReason: payload.taxExemptReason,
+    }
+  }
 
   const { data, error } = await supabase
     .from('customers')

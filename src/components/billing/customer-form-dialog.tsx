@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { BillingDetailsPanel } from '@/components/billing/billing-details-panel'
 import type { BillingCustomer, BillingAddress } from '@/types/billing'
 
 const schema = z.object({
@@ -24,6 +25,10 @@ const schema = z.object({
   email: z.string().email('Valid email is required'),
   billingContact: z.string().optional(),
   currency: z.string().optional(),
+  taxId: z.string().optional(),
+  taxExempt: z.boolean().optional(),
+  taxExemptReason: z.string().optional(),
+  paymentTerms: z.string().optional(),
   line1: z.string().optional(),
   line2: z.string().optional(),
   city: z.string().optional(),
@@ -43,7 +48,12 @@ export interface CustomerFormDialogProps {
     email: string
     billingContact?: string
     currency?: string
+    taxId?: string
+    taxExempt?: boolean
+    taxExemptReason?: string
+    paymentTerms?: string
     billingAddress?: BillingAddress
+    taxInfo?: { taxId?: string; taxExempt?: boolean; taxExemptReason?: string }
   }) => void
   isLoading?: boolean
 }
@@ -61,6 +71,8 @@ export function CustomerFormDialog({
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -69,6 +81,10 @@ export function CustomerFormDialog({
       email: '',
       billingContact: '',
       currency: 'USD',
+      taxId: '',
+      taxExempt: false,
+      taxExemptReason: '',
+      paymentTerms: 'Net 30',
       line1: '',
       line2: '',
       city: '',
@@ -85,6 +101,10 @@ export function CustomerFormDialog({
         email: customer?.email ?? '',
         billingContact: customer?.billingContact ?? '',
         currency: customer?.currency ?? 'USD',
+        taxId: customer?.taxInfo?.taxId ?? '',
+        taxExempt: customer?.taxInfo?.taxExempt ?? false,
+        taxExemptReason: customer?.taxInfo?.taxExemptReason ?? '',
+        paymentTerms: 'Net 30',
         line1: customer?.billingAddress?.line1 ?? '',
         line2: customer?.billingAddress?.line2 ?? '',
         city: customer?.billingAddress?.city ?? '',
@@ -101,6 +121,12 @@ export function CustomerFormDialog({
       email: data.email,
       billingContact: data.billingContact || undefined,
       currency: data.currency || 'USD',
+      taxId: data.taxId || undefined,
+      paymentTerms: data.paymentTerms || undefined,
+      taxInfo:
+        data.taxId || data.taxExempt
+          ? { taxId: data.taxId, taxExempt: data.taxExempt, taxExemptReason: data.taxExemptReason }
+          : undefined,
       billingAddress:
         data.line1 || data.city || data.country
           ? {
@@ -167,6 +193,21 @@ export function CustomerFormDialog({
               </div>
             </div>
           </div>
+          <BillingDetailsPanel
+            currency={watch('currency') ?? 'USD'}
+            taxId={watch('taxId') ?? ''}
+            taxExempt={watch('taxExempt') ?? false}
+            taxExemptReason={watch('taxExemptReason') ?? ''}
+            paymentTerms={watch('paymentTerms') ?? 'Net 30'}
+            onCurrencyChange={(v) => setValue('currency', v)}
+            onTaxInfoChange={(info) => {
+              if (info.taxId !== undefined) setValue('taxId', info.taxId ?? '')
+              if (info.taxExempt !== undefined) setValue('taxExempt', info.taxExempt)
+              if (info.taxExemptReason !== undefined) setValue('taxExemptReason', info.taxExemptReason ?? '')
+            }}
+            onPaymentTermsChange={(v) => setValue('paymentTerms', v)}
+            disabled={isLoading}
+          />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
               Cancel

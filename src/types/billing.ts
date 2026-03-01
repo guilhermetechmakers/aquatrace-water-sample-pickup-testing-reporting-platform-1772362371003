@@ -168,6 +168,11 @@ export interface CustomerCreatePayload {
   billingAddress?: BillingAddress
   currency?: string
   billingContact?: string
+  taxId?: string
+  taxExempt?: boolean
+  taxExemptReason?: string
+  taxInfo?: TaxInfo
+  paymentTerms?: string
 }
 
 /** Create invoice payload */

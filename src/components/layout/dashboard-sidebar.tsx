@@ -24,6 +24,7 @@ import {
   FileCheck,
   Bell,
   Search,
+  FileDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ const allNavItems = [
   { to: '/dashboard/invoicing', icon: DollarSign, label: 'Invoicing', roles: ['LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', roles: ['LAB_TECH', 'LAB_MANAGER', 'ADMIN', 'VIEWER'] },
   { to: '/dashboard/admin', icon: Shield, label: 'Admin', roles: ['ADMIN'] },
+  { to: '/dashboard/admin/data-export-import', icon: FileDown, label: 'Data Export & Import', roles: ['ADMIN', 'LAB_MANAGER'] },
   { to: '/dashboard/alerts', icon: Bell, label: 'Alerts & Analytics', roles: ['ADMIN', 'LAB_MANAGER'] },
   { to: '/dashboard/users', icon: UserCog, label: 'Users', roles: ['ADMIN'] },
   { to: '/dashboard/audit', icon: FileCheck, label: 'Audit Log', roles: ['ADMIN'] },

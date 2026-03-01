@@ -20,6 +20,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: [],
     search: ['read'],
     attachments: ['read', 'create', 'delete'],
+    data_export_import: [],
   },
   LAB_TECH: {
     pickup: ['read'],
@@ -38,6 +39,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: ['read'],
     search: ['read'],
     attachments: ['read', 'create', 'delete'],
+    data_export_import: [],
   },
   LAB_MANAGER: {
     pickup: ['read'],
@@ -56,6 +58,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: ['read', 'execute'],
     search: ['read'],
     attachments: ['read', 'create', 'update', 'delete'],
+    data_export_import: ['read', 'execute'],
   },
   ADMIN: {
     pickup: ['read', 'create', 'update', 'delete'],
@@ -74,6 +77,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: ['read', 'execute'],
     search: ['read'],
     attachments: ['read', 'create', 'update', 'delete', 'execute'],
+    data_export_import: ['read', 'create', 'update', 'delete', 'execute'],
   },
   VIEWER: {
     pickup: [],
@@ -92,6 +96,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: ['read'],
     search: ['read'],
     attachments: ['read'],
+    data_export_import: [],
   },
   CUSTOMER_VIEW: {
     pickup: [],
@@ -110,6 +115,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     analytics: [],
     search: [],
     attachments: ['read'],
+    data_export_import: [],
   },
 }
 
@@ -144,6 +150,8 @@ export function canAccessPage(role: AuthRole, page: string): boolean {
     '/dashboard/users': ['ADMIN'],
     '/dashboard/audit': ['ADMIN'],
     '/dashboard/pickups': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
+    '/dashboard/admin/data-export-import': ['ADMIN'],
+    '/dashboard/admin/data-import': ['ADMIN'],
     '/portal': ['CUSTOMER_VIEW'],
   }
   const allowed = pageAccess[page] ?? []

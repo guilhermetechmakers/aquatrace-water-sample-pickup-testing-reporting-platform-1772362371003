@@ -19,6 +19,7 @@ export type Resource =
   | 'analytics'
   | 'search'
   | 'attachments'
+  | 'data_export_import'
 
 export interface Permission {
   id: string

@@ -21,6 +21,7 @@ import { LabResultsEntryPage } from '@/pages/dashboard/lab-results-entry'
 import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
 import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
 import { AdminBillingPage } from '@/pages/dashboard/admin/billing'
+import { DataExportImportPage } from '@/pages/dashboard/admin/data-export-import'
 import { AdminNotificationsPage } from '@/pages/dashboard/admin/notifications'
 import { AdminNotificationsConfigPage } from '@/pages/dashboard/admin/notifications-config'
 import { AdminTemplatesPage } from '@/pages/dashboard/admin/templates'
@@ -193,6 +194,7 @@ export const router = createBrowserRouter([
           { path: 'notifications-config', element: <AdminNotificationsConfigPage /> },
           { path: 'templates', element: <AdminTemplatesPage /> },
           { path: 'template-localization/:templateId', element: <TemplateLocalizationPage /> },
+          { path: 'data-export-import', element: <DataExportImportPage /> },
         ],
       },
       { path: 'alerts', element: <AlertsDashboardPage /> },

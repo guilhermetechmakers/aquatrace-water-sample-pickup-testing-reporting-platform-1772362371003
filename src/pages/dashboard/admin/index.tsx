@@ -283,6 +283,20 @@ export function AdminPage() {
             </CardContent>
           </Card>
         </Link>
+        <Link to="/dashboard/admin/data-export-import">
+          <Card className="h-full transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <FileText className="h-10 w-10 text-primary" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">Data Export & Import</CardTitle>
+              <CardDescription>
+                Bulk export samples, results, invoices. CSV import with validation.
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <PermissionMatrix />

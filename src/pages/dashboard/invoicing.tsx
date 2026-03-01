@@ -4,8 +4,8 @@
  */
 
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { Plus, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -133,10 +133,26 @@ export function InvoicingPage() {
             Create, send, and track invoices. Manage accounts receivable.
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Invoice
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/dashboard/admin/data-export-import?tab=export&type=invoices">
+              <FileDown className="h-4 w-4 mr-2" />
+              Export for Accounting
+            </Link>
+          </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/dashboard/admin/data-export-import">
+              <FileDown className="h-4 w-4 mr-2" />
+              Export Data
+            </Link>
+          </Button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Invoice
+          </Button>
+        </div>
+        </div>
       </div>
 
       <ARDashboard
