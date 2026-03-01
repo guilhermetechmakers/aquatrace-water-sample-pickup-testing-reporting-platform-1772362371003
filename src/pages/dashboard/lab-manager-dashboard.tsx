@@ -17,6 +17,9 @@ import {
   Loader2,
   Wrench,
   UserPlus,
+  AlertCircle,
+  RefreshCw,
+  Inbox,
 } from 'lucide-react'
 import {
   useReactTable,
@@ -45,6 +48,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -65,25 +75,29 @@ import { cn } from '@/lib/utils'
 function SortableHeader({
   column,
   children,
+  sortLabel,
 }: {
   column: { getIsSorted: () => false | 'asc' | 'desc'; getToggleSortingHandler: () => ((e: unknown) => void) | undefined }
   children: React.ReactNode
+  sortLabel: string
 }) {
   const sort = column.getIsSorted()
   const handler = column.getToggleSortingHandler()
+  const sortState = sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'
   return (
     <button
       type="button"
-      className="flex items-center gap-1 font-medium hover:text-foreground transition-colors"
+      className="flex items-center gap-1 font-medium hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
       onClick={(e) => handler?.(e)}
+      aria-label={`Sort by ${sortLabel} (${sortState})`}
     >
       {children}
       {sort === 'asc' ? (
-        <ChevronUp className="h-4 w-4" />
+        <ChevronUp className="h-4 w-4" aria-hidden />
       ) : sort === 'desc' ? (
-        <ChevronDown className="h-4 w-4" />
+        <ChevronDown className="h-4 w-4" aria-hidden />
       ) : (
-        <ChevronsUpDown className="h-4 w-4 opacity-50" />
+        <ChevronsUpDown className="h-4 w-4 opacity-50" aria-hidden />
       )}
     </button>
   )
@@ -100,7 +114,7 @@ const STATUS_LABELS: Record<ApprovalRequest['status'], string> = {
 export function LabManagerDashboardPage() {
   const { user } = useAuth()
   const { hasPermission } = useRBAC()
-  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchModal, setBatchModal] = useState<'approve' | 'reject' | 'corrective' | 'reassign' | null>(null)
@@ -121,12 +135,12 @@ export function LabManagerDashboardPage() {
 
   const filters = useMemo(
     () => ({
-      status: (statusFilter || undefined) as ApprovalRequest['status'] | undefined,
+      status: (statusFilter && statusFilter !== 'all' ? statusFilter : undefined) as ApprovalRequest['status'] | undefined,
     }),
     [statusFilter]
   )
 
-  const { data, isLoading } = usePendingApprovals(filters)
+  const { data, isLoading, isError, error, refetch } = usePendingApprovals(filters)
   const approvals = data?.data ?? []
   const count = data?.count ?? 0
   const summary = data?.summary ?? { inQueue: 0, overdue: 0 }
@@ -187,11 +201,12 @@ export function LabManagerDashboardPage() {
       },
       {
         accessorKey: 'id',
-        header: ({ column }) => <SortableHeader column={column}>ID</SortableHeader>,
+        header: ({ column }) => <SortableHeader column={column} sortLabel="ID">ID</SortableHeader>,
         cell: ({ row }) => (
           <Link
             to={`/dashboard/approvals/${row.original.id}`}
-            className="font-mono text-sm text-primary hover:underline"
+            className="font-mono text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+            aria-label={`View approval details for ${row.original.id}`}
           >
             {row.original.id?.slice(0, 8)}…
           </Link>
@@ -199,27 +214,35 @@ export function LabManagerDashboardPage() {
       },
       {
         accessorKey: 'customerName',
-        header: ({ column }) => <SortableHeader column={column}>Customer</SortableHeader>,
+        header: ({ column }) => <SortableHeader column={column} sortLabel="Customer">Customer</SortableHeader>,
         cell: ({ row }) => row.original.customerName ?? '—',
       },
       {
         accessorKey: 'sampleLocation',
-        header: ({ column }) => <SortableHeader column={column}>Sample</SortableHeader>,
+        header: ({ column }) => <SortableHeader column={column} sortLabel="Sample">Sample</SortableHeader>,
         cell: ({ row }) => row.original.sampleLocation ?? '—',
       },
       {
         accessorKey: 'status',
-        header: ({ column }) => <SortableHeader column={column}>Status</SortableHeader>,
+        header: ({ column }) => <SortableHeader column={column} sortLabel="Status">Status</SortableHeader>,
         cell: ({ row }) => {
           const s = row.original.status
           const variant =
-            s === 'approved' ? 'approved' : s === 'rejected' ? 'rejected' : s === 'corrective_action' ? 'warning' : 'pending'
+            s === 'approved'
+              ? 'approved'
+              : s === 'rejected'
+                ? 'rejected'
+                : s === 'corrective_action'
+                  ? 'corrective_action'
+                  : s === 'under_review'
+                    ? 'under_review'
+                    : 'pending'
           return <Badge variant={variant}>{STATUS_LABELS[s] ?? s}</Badge>
         },
       },
       {
         accessorKey: 'daysInQueue',
-        header: ({ column }) => <SortableHeader column={column}>Days</SortableHeader>,
+        header: ({ column }) => <SortableHeader column={column} sortLabel="Days in queue">Days</SortableHeader>,
         cell: ({ row }) => row.original.daysInQueue ?? '—',
       },
       {
@@ -243,7 +266,11 @@ export function LabManagerDashboardPage() {
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Open actions menu for approval ${row.original.id}`}
+              >
                 Actions
               </Button>
             </DropdownMenuTrigger>
@@ -437,25 +464,33 @@ export function LabManagerDashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-primary/10 to-accent/10">
+        <Card className="bg-gradient-to-br from-primary/10 to-accent/10 border-border">
           <CardHeader>
             <CardTitle className="text-base">In Queue</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{summary.inQueue ?? count}</p>
+            {isLoading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className="text-3xl font-bold text-foreground">{summary.inQueue ?? count}</p>
+            )}
           </CardContent>
         </Card>
-        <Card className={cn((summary.overdue ?? 0) > 0 && 'border-destructive/50')}>
+        <Card className={cn((summary.overdue ?? 0) > 0 && 'border-destructive/50', 'border-border')}>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               Overdue
               {(summary.overdue ?? 0) > 0 && (
-                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden />
               )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{summary.overdue ?? 0}</p>
+            {isLoading ? (
+              <Skeleton className="h-9 w-12" />
+            ) : (
+              <p className="text-3xl font-bold text-foreground">{summary.overdue ?? 0}</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -469,53 +504,61 @@ export function LabManagerDashboardPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden />
                 <Input
-                  placeholder="Search..."
+                  placeholder="Search approvals by ID, customer, or sample location..."
                   className="pl-9 w-48 sm:w-64"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Search approvals"
                 />
               </div>
-              <select
-                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label="Filter by status"
-              >
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="under_review">Under Review</option>
-                <option value="corrective_action">Corrective Action</option>
-              </select>
+              <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+                <SelectTrigger className="w-[180px]" aria-label="Filter by status">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="under_review">Under Review</SelectItem>
+                  <SelectItem value="corrective_action">Corrective Action</SelectItem>
+                </SelectContent>
+              </Select>
               {selectedIds.size > 0 && hasPermission('approvals', 'execute') && (
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setBatchModal('reject')}
+                    aria-label={`Batch reject ${selectedIds.size} selected approvals`}
                   >
-                    <XCircle className="h-4 w-4 mr-1" />
+                    <XCircle className="h-4 w-4 mr-1" aria-hidden />
                     Reject ({selectedIds.size})
                   </Button>
-                  <Button size="sm" onClick={() => setBatchModal('approve')}>
-                    <Check className="h-4 w-4 mr-1" />
+                  <Button
+                    size="sm"
+                    onClick={() => setBatchModal('approve')}
+                    aria-label={`Batch approve ${selectedIds.size} selected approvals`}
+                  >
+                    <Check className="h-4 w-4 mr-1" aria-hidden />
                     Approve ({selectedIds.size})
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setBatchModal('corrective')}
+                    aria-label={`Request corrective action for ${selectedIds.size} selected approvals`}
                   >
-                    <Wrench className="h-4 w-4 mr-1" />
+                    <Wrench className="h-4 w-4 mr-1" aria-hidden />
                     Corrective ({selectedIds.size})
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setBatchModal('reassign')}
+                    aria-label={`Reassign ${selectedIds.size} selected approvals`}
                   >
-                    <UserPlus className="h-4 w-4 mr-1" />
+                    <UserPlus className="h-4 w-4 mr-1" aria-hidden />
                     Reassign ({selectedIds.size})
                   </Button>
                 </div>
@@ -525,13 +568,60 @@ export function LabManagerDashboardPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="space-y-4">
+            <div className="space-y-4" role="status" aria-label="Loading approvals">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-12 w-full rounded-md" />
               ))}
             </div>
+          ) : isError ? (
+            <div
+              className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-lg border border-border bg-muted/20"
+              role="alert"
+              aria-live="assertive"
+            >
+              <AlertCircle className="h-12 w-12 text-destructive mb-4" aria-hidden />
+              <p className="font-medium text-foreground">Failed to load approvals</p>
+              <p className="mt-1 text-sm text-muted-foreground max-w-md">
+                {error instanceof Error ? error.message : 'Something went wrong. Please try again.'}
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4 min-h-[44px]"
+                onClick={() => refetch()}
+                aria-label="Retry loading approvals"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
+                Try again
+              </Button>
+            </div>
+          ) : (filteredApprovals ?? []).length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-lg border border-border bg-muted/10"
+              role="status"
+              aria-label="No approvals in queue"
+            >
+              <div className="rounded-full bg-muted/50 p-4 mb-4">
+                <Inbox className="h-12 w-12 text-muted-foreground" aria-hidden />
+              </div>
+              <p className="font-medium text-foreground">No approvals in queue</p>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                {search.trim()
+                  ? 'No approvals match your search. Try adjusting your filters or search terms.'
+                  : 'Approvals are created when lab results are submitted for review.'}
+              </p>
+              {search.trim() && (
+                <Button
+                  variant="outline"
+                  className="mt-6 min-h-[44px]"
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search and show all approvals"
+                >
+                  Clear search
+                </Button>
+              )}
+            </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full">
                 <thead className="bg-muted/50 sticky top-0">
                   {tableInstance.getHeaderGroups().map((hg) => (
@@ -551,7 +641,7 @@ export function LabManagerDashboardPage() {
                   {tableInstance.getRowModel().rows.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-t transition-colors hover:bg-muted/30"
+                      className="border-t border-border transition-colors hover:bg-muted/30"
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="px-4 py-3 text-sm">
@@ -562,15 +652,6 @@ export function LabManagerDashboardPage() {
                   ))}
                 </tbody>
               </table>
-              {(filteredApprovals ?? []).length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <CheckSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No approvals in queue</p>
-                  <p className="text-sm mt-1">
-                    Approvals are created when lab results are submitted for review.
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </CardContent>
@@ -585,21 +666,25 @@ export function LabManagerDashboardPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <label className="text-sm font-medium">Notes (optional)</label>
-            <textarea
-              className="mt-1 flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            <Label htmlFor="batch-approve-notes" className="text-sm font-medium">Notes (optional)</Label>
+            <Textarea
+              id="batch-approve-notes"
+              className="mt-1"
               value={batchNotes}
               onChange={(e) => setBatchNotes(e.target.value)}
               placeholder="Optional notes..."
+              rows={3}
+              aria-label="Optional notes for batch approval"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBatchModal(null)}>
+            <Button variant="outline" onClick={() => setBatchModal(null)} aria-label="Cancel batch approve">
               Cancel
             </Button>
             <Button
               onClick={handleBatchApprove}
               disabled={batchMutation.isPending}
+              aria-label={`Approve ${selectedIds.size} selected items`}
             >
               {batchMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -620,23 +705,26 @@ export function LabManagerDashboardPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label className="text-sm font-medium">Reason</Label>
+            <Label htmlFor="batch-reject-reason" className="text-sm font-medium">Reason</Label>
             <Textarea
+              id="batch-reject-reason"
               className="mt-1"
               value={batchNotes}
               onChange={(e) => setBatchNotes(e.target.value)}
               placeholder="Reason for rejection..."
               rows={3}
+              aria-label="Reason for batch rejection"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBatchModal(null)}>
+            <Button variant="outline" onClick={() => setBatchModal(null)} aria-label="Cancel batch reject">
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleBatchReject}
               disabled={!batchNotes.trim() || batchMutation.isPending}
+              aria-label={`Reject ${selectedIds.size} selected items`}
             >
               {batchMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -658,42 +746,47 @@ export function LabManagerDashboardPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Description *</Label>
+              <Label htmlFor="corrective-description">Description *</Label>
               <Textarea
+                id="corrective-description"
                 className="mt-1"
                 value={correctiveDescription}
                 onChange={(e) => setCorrectiveDescription(e.target.value)}
                 placeholder="Describe the corrective action required..."
                 rows={3}
+                aria-label="Corrective action description"
               />
             </div>
             <div>
-              <Label>Due Date *</Label>
+              <Label htmlFor="corrective-due-date">Due Date *</Label>
               <Input
+                id="corrective-due-date"
                 type="date"
                 value={correctiveDueDate}
                 onChange={(e) => setCorrectiveDueDate(e.target.value)}
                 className="mt-1"
+                aria-label="Corrective action due date"
               />
             </div>
             <div>
-              <Label>Assign To (optional)</Label>
-              <select
-                value={correctiveAssignee}
-                onChange={(e) => setCorrectiveAssignee(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">— Select —</option>
-                {(labManagers ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name ?? m.email} ({m.role})
-                  </option>
-                ))}
-              </select>
+              <Label htmlFor="corrective-assignee">Assign To (optional)</Label>
+              <Select value={correctiveAssignee || 'none'} onValueChange={(v) => setCorrectiveAssignee(v === 'none' ? '' : v)}>
+                <SelectTrigger id="corrective-assignee" className="mt-1" aria-label="Assign corrective action to lab manager">
+                  <SelectValue placeholder="— Select —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Select —</SelectItem>
+                  {(labManagers ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.display_name ?? m.email} ({m.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBatchModal(null)}>
+            <Button variant="outline" onClick={() => setBatchModal(null)} aria-label="Cancel corrective action">
               Cancel
             </Button>
             <Button
@@ -703,6 +796,7 @@ export function LabManagerDashboardPage() {
                 !correctiveDueDate ||
                 batchMutation.isPending
               }
+              aria-label={`Request corrective action for ${selectedIds.size} items`}
             >
               {batchMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -724,38 +818,42 @@ export function LabManagerDashboardPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>New Assignee *</Label>
-              <select
-                value={reassignUserId}
-                onChange={(e) => setReassignUserId(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">— Select Lab Manager —</option>
-                {(labManagers ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name ?? m.email} ({m.role})
-                  </option>
-                ))}
-              </select>
+              <Label htmlFor="reassign-assignee">New Assignee *</Label>
+              <Select value={reassignUserId || 'none'} onValueChange={(v) => setReassignUserId(v === 'none' ? '' : v)}>
+                <SelectTrigger id="reassign-assignee" className="mt-1" aria-label="Select lab manager to reassign to">
+                  <SelectValue placeholder="— Select Lab Manager —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Select Lab Manager —</SelectItem>
+                  {(labManagers ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.display_name ?? m.email} ({m.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label>Message (optional)</Label>
+              <Label htmlFor="reassign-message">Message (optional)</Label>
               <Textarea
+                id="reassign-message"
                 className="mt-1"
                 value={reassignMessage}
                 onChange={(e) => setReassignMessage(e.target.value)}
                 placeholder="Optional message for the assignee..."
                 rows={2}
+                aria-label="Optional message for reassignment"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBatchModal(null)}>
+            <Button variant="outline" onClick={() => setBatchModal(null)} aria-label="Cancel reassignment">
               Cancel
             </Button>
             <Button
               onClick={handleBatchReassign}
               disabled={!reassignUserId || batchMutation.isPending}
+              aria-label={`Reassign ${selectedIds.size} items`}
             >
               {batchMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
