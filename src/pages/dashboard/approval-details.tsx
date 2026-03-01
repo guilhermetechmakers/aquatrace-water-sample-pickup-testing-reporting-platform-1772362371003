@@ -11,6 +11,7 @@ import {
   Check,
   X,
   AlertTriangle,
+  AlertCircle,
   FileText,
   Download,
   UserPlus,
@@ -18,6 +19,7 @@ import {
   Mail,
   RefreshCw,
   FileCheck,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -25,6 +27,13 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   AlertDialog,
@@ -101,7 +110,7 @@ export function ApprovalDetailsPage() {
   const { user } = useAuth()
   const { hasPermission } = useRBAC()
 
-  const { data: approval, isLoading } = useApproval(id ?? null)
+  const { data: approval, isLoading, isError, error, refetch } = useApproval(id ?? null)
   const approveMutation = useApproveApproval()
   const rejectMutation = useRejectApproval()
   const addCommentMutation = useAddApprovalComment()
@@ -118,11 +127,13 @@ export function ApprovalDetailsPage() {
   const [reassignUserId, setReassignUserId] = useState('')
   const [reassignMessage, setReassignMessage] = useState('')
   const [labManagers, setLabManagers] = useState<ProfileUser[]>([])
+  const [labManagersLoading, setLabManagersLoading] = useState(true)
+  const [labManagersError, setLabManagersError] = useState<string | null>(null)
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState(1)
 
   const ensureReportMutation = useEnsureReportForApproval()
-  const { data: report, refetch: refetchReport } = useReportByApprovalId(id ?? null)
+  const { data: report, isLoading: reportLoading, isError: reportError, error: reportErrorObj, refetch: refetchReport } = useReportByApprovalId(id ?? null)
   const { data: versions = [] } = useReportVersions(id ?? null)
   const generatePdfMutation = useGenerateReportPdf()
   const sendEmailMutation = useSendReportEmail()
@@ -142,9 +153,18 @@ export function ApprovalDetailsPage() {
   }, [versions])
 
   useEffect(() => {
+    setLabManagersLoading(true)
+    setLabManagersError(null)
     fetchLabManagers()
-      .then((list) => setLabManagers(Array.isArray(list) ? list : []))
-      .catch(() => setLabManagers([]))
+      .then((list) => {
+        setLabManagers(Array.isArray(list) ? list : [])
+        setLabManagersError(null)
+      })
+      .catch((err) => {
+        setLabManagers([])
+        setLabManagersError(err instanceof Error ? err.message : 'Failed to load lab managers')
+      })
+      .finally(() => setLabManagersLoading(false))
   }, [])
 
   useEffect(() => {
@@ -327,15 +347,23 @@ export function ApprovalDetailsPage() {
   }
 
   const [customerEmail, setCustomerEmail] = useState('')
+  const [customerEmailError, setCustomerEmailError] = useState<string | null>(null)
   useEffect(() => {
-    if (safeApproval.customerId) {
-      supabase
+    if (!safeApproval.customerId) return
+    setCustomerEmailError(null)
+    const loadEmail = async () => {
+      const { data, error } = await supabase
         .from('customers')
         .select('email')
         .eq('id', safeApproval.customerId)
         .single()
-        .then(({ data }) => setCustomerEmail((data as { email?: string } | null)?.email ?? ''))
+      if (error) {
+        setCustomerEmailError('Could not load customer email')
+        return
+      }
+      setCustomerEmail((data as { email?: string } | null)?.email ?? '')
     }
+    void loadEmail()
   }, [safeApproval.customerId])
 
   const handleEmailToCustomer = () => {
@@ -468,12 +496,59 @@ export function ApprovalDetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid gap-6 md:grid-cols-2">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
+      <div className="space-y-8 animate-fade-in" role="status" aria-label="Loading approval details">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-10 w-10 rounded-md" />
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-20" />
+          </div>
         </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-64 rounded-lg" />
+          <Skeleton className="h-64 rounded-lg" />
+        </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Card className="max-w-md">
+          <CardHeader>
+            <div
+              className="flex flex-col items-center justify-center py-8 text-center"
+              role="alert"
+              aria-live="assertive"
+            >
+              <AlertCircle className="h-12 w-12 text-destructive mb-4" aria-hidden />
+              <CardTitle>Failed to load approval</CardTitle>
+              <CardDescription className="mt-2">
+                {error instanceof Error ? error.message : 'Something went wrong. Please try again.'}
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Button onClick={() => refetch()} aria-label="Retry loading approval">
+              <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
+              Try again
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/dashboard/approvals">Back to Queue</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -498,9 +573,9 @@ export function ApprovalDetailsPage() {
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" asChild aria-label="Back to approvals queue">
             <Link to="/dashboard/approvals">
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-5 w-5" aria-hidden />
             </Link>
           </Button>
           <div>
@@ -538,24 +613,33 @@ export function ApprovalDetailsPage() {
             </Button>
           )}
           {report && (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={handleViewPdf}>
-                <FileCheck className="h-4 w-4 mr-1" />
-                View PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleEmailToCustomer}
-                disabled={!customerEmail || sendEmailMutation.isPending}
-              >
-                <Mail className="h-4 w-4 mr-1" />
-                Email to Customer
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleReissue} disabled={reissueMutation.isPending}>
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Reissue
-              </Button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={handleViewPdf}>
+                  <FileCheck className="h-4 w-4 mr-1" />
+                  View PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleEmailToCustomer}
+                  disabled={!customerEmail || sendEmailMutation.isPending || !!customerEmailError}
+                  title={customerEmailError ?? undefined}
+                  aria-label={customerEmailError ? `Email to customer (${customerEmailError})` : 'Email to customer'}
+                >
+                  <Mail className="h-4 w-4 mr-1" />
+                  Email to Customer
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleReissue} disabled={reissueMutation.isPending}>
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Reissue
+                </Button>
+              </div>
+              {customerEmailError && (
+                <span className="text-xs text-destructive" role="alert">
+                  {customerEmailError}
+                </span>
+              )}
             </div>
           )}
           {canAct && (
@@ -640,6 +724,38 @@ export function ApprovalDetailsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {reportLoading && !report && (ensureReportMutation.isPending || safeApproval.status === 'approved') && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-5 w-5 rounded" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
+          </CardContent>
+        </Card>
+      )}
+
+      {reportError && !report && (
+        <Card className="border-destructive/50">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center" role="alert">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" aria-hidden />
+            <p className="font-medium text-foreground">Failed to load report</p>
+            <p className="mt-1 text-sm text-muted-foreground max-w-md">
+              {reportErrorObj instanceof Error ? reportErrorObj.message : 'Something went wrong loading the report.'}
+            </p>
+            <Button variant="outline" className="mt-4" onClick={() => refetchReport()}>
+              <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {report && (
         <Card>
@@ -795,12 +911,16 @@ export function ApprovalDetailsPage() {
               Please provide a reason for rejection. This will be recorded in the audit trail.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Input
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Reason for rejection..."
-            className="mt-2"
-          />
+          <div className="mt-4 space-y-2">
+            <Label htmlFor="reject-reason">Reason for rejection</Label>
+            <Input
+              id="reject-reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection..."
+              aria-label="Reason for rejection"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -845,19 +965,34 @@ export function ApprovalDetailsPage() {
             </div>
             <div>
               <Label htmlFor="corrective-assignee">Assign To (optional)</Label>
-              <select
-                id="corrective-assignee"
-                value={correctiveAssignee}
-                onChange={(e) => setCorrectiveAssignee(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Select
+                value={correctiveAssignee || 'none'}
+                onValueChange={(v) => setCorrectiveAssignee(v === 'none' ? '' : v)}
+                disabled={labManagersLoading}
               >
-                <option value="">— Select —</option>
-                {(labManagers ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name ?? m.email} ({m.role})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="corrective-assignee" className="mt-1" aria-label="Assign corrective action to lab manager">
+                  <SelectValue placeholder={labManagersLoading ? 'Loading…' : labManagersError ?? '— Select —'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Select —</SelectItem>
+                  {(labManagers ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.display_name ?? m.email} ({m.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {labManagersLoading && (
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Loading lab managers…
+                </p>
+              )}
+              {labManagersError && !labManagersLoading && (
+                <p className="mt-1 text-sm text-destructive" role="alert">
+                  {labManagersError}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -889,19 +1024,34 @@ export function ApprovalDetailsPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="reassign-user">New Assignee *</Label>
-              <select
-                id="reassign-user"
-                value={reassignUserId}
-                onChange={(e) => setReassignUserId(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Select
+                value={reassignUserId || 'none'}
+                onValueChange={(v) => setReassignUserId(v === 'none' ? '' : v)}
+                disabled={labManagersLoading}
               >
-                <option value="">— Select Lab Manager —</option>
-                {(labManagers ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name ?? m.email} ({m.role})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="reassign-user" className="mt-1" aria-label="Select lab manager to reassign approval to">
+                  <SelectValue placeholder={labManagersLoading ? 'Loading…' : labManagersError ?? '— Select Lab Manager —'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Select Lab Manager —</SelectItem>
+                  {(labManagers ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.display_name ?? m.email} ({m.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {labManagersLoading && (
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Loading lab managers…
+                </p>
+              )}
+              {labManagersError && !labManagersLoading && (
+                <p className="mt-1 text-sm text-destructive" role="alert">
+                  {labManagersError}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="reassign-msg">Message (optional)</Label>
