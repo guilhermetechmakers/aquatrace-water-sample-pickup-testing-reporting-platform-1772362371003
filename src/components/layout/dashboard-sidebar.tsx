@@ -103,15 +103,15 @@ export function DashboardSidebar() {
           <Separator />
           <div className="p-4">
             <Link
-              to="/dashboard/settings"
+              to="/dashboard/profile"
               onClick={() => setMobileOpen(false)}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
-                location.pathname === '/dashboard/settings' && 'bg-secondary text-foreground'
+                (location.pathname === '/dashboard/profile' || location.pathname === '/dashboard/settings') && 'bg-secondary text-foreground'
               )}
             >
               <Settings className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Settings</span>}
+              {!collapsed && <span>Profile</span>}
             </Link>
           </div>
         </div>

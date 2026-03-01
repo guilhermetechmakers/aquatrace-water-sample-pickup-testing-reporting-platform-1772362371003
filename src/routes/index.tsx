@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { SidebarProvider } from '@/contexts/sidebar-context'
 import { AuthLayout } from '@/components/layout/auth-layout'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -18,7 +18,7 @@ import { ReportsPage } from '@/pages/dashboard/reports'
 import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
-import { SettingsPage } from '@/pages/dashboard/settings'
+import { ProfilePage } from '@/pages/dashboard/profile'
 
 import { CustomerPortalPage } from '@/pages/customer/portal'
 import { HelpPage } from '@/pages/help'
@@ -59,7 +59,8 @@ export const router = createBrowserRouter([
       { path: 'customers', element: <CustomersPage /> },
       { path: 'invoicing', element: <InvoicingPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      { path: 'settings', element: <Navigate to="/dashboard/profile" replace /> },
+      { path: 'profile', element: <ProfilePage /> },
     ],
   },
   {
