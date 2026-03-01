@@ -23,6 +23,7 @@ import {
   UserCog,
   FileCheck,
   Bell,
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import { Separator } from '@/components/ui/separator'
 
 const allNavItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Overview', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/search', icon: Search, label: 'Search', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/pickups', icon: MapPin, label: 'My Pickups', roles: ['TECHNICIAN'] },
   { to: '/dashboard/pickups/samples', icon: ListOrdered, label: 'Sample List', roles: ['TECHNICIAN'] },
   { to: '/dashboard/samples', icon: Droplets, label: 'Samples', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },

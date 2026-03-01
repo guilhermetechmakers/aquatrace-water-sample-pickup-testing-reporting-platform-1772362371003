@@ -18,6 +18,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     customers: [],
     invoicing: [],
     analytics: [],
+    search: ['read'],
   },
   LAB_TECH: {
     pickup: ['read'],
@@ -34,6 +35,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     customers: [],
     invoicing: [],
     analytics: [],
+    search: ['read'],
   },
   LAB_MANAGER: {
     pickup: ['read'],
@@ -50,6 +52,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     customers: ['read'],
     invoicing: ['read'],
     analytics: ['read'],
+    search: ['read'],
   },
   ADMIN: {
     pickup: ['read', 'create', 'update', 'delete'],
@@ -66,6 +69,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     customers: ['read', 'create', 'update', 'delete'],
     invoicing: ['read', 'create', 'update'],
     analytics: ['read'],
+    search: ['read'],
   },
   CUSTOMER_VIEW: {
     pickup: [],
@@ -82,6 +86,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     customers: [],
     invoicing: [],
     analytics: [],
+    search: [],
   },
 }
 
@@ -98,6 +103,7 @@ export function hasPermission(
 export function canAccessPage(role: AuthRole, page: string): boolean {
   const pageAccess: Record<string, AuthRole[]> = {
     '/dashboard': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
+    '/dashboard/search': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
     '/dashboard/samples': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
     '/dashboard/lab': ['LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
     '/dashboard/approvals': ['LAB_MANAGER', 'ADMIN'],

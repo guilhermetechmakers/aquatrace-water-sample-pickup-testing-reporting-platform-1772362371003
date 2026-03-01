@@ -2,19 +2,19 @@
  * Technician Sample List (page_007)
  * List view with filters: status, date range, site, pH range, chlorine range
  * Search: sampleId, site name, notes. Summary counts by status.
+ * Integrated with SearchBar, FacetedFilterPanel, SavedSearchManager.
  */
 
-import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Search,
   Wifi,
   WifiOff,
   RefreshCw,
   Loader2,
   Droplets,
   Plus,
-  Filter,
+  Bookmark,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,9 +24,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useRBAC } from '@/hooks/useRBAC'
 import { usePickupSamples, useSyncPickups } from '@/hooks/usePickupSamples'
 import { useSites } from '@/hooks/useSites'
+import { SearchBar, FacetedFilterPanel, SavedSearchManager } from '@/components/search'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
+import type { SearchFilters, SavedSearch } from '@/types/search'
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -62,23 +64,81 @@ function getStatusBadgeVariant(status: string): 'success' | 'rejected' | 'accent
 
 export function SampleListPage() {
   const { hasPermission } = useRBAC()
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [siteFilter, setSiteFilter] = useState<string>('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const searchFromUrl = searchParams.get('q') ?? ''
+  const statusFromUrl = searchParams.get('status') ?? 'all'
+  const siteFromUrl = searchParams.get('site') ?? 'all'
+  const dateFromUrl = searchParams.get('from') ?? ''
+  const dateToUrl = searchParams.get('to') ?? ''
+
+  const [search, setSearch] = useState(searchFromUrl)
+  const [statusFilter, setStatusFilter] = useState<string>(statusFromUrl)
+  const [siteFilter, setSiteFilter] = useState<string>(siteFromUrl)
+  const [dateFrom, setDateFrom] = useState(dateFromUrl)
+  const [dateTo, setDateTo] = useState(dateToUrl)
   const [pHMin, setPHMin] = useState('')
   const [pHMax, setPHMax] = useState('')
   const [chlorineMin, setChlorineMin] = useState('')
   const [chlorineMax, setChlorineMax] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [savedSearchOpen, setSavedSearchOpen] = useState(false)
   const [isOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   )
 
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('q', search)
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (siteFilter !== 'all') params.set('site', siteFilter)
+    if (dateFrom) params.set('from', dateFrom)
+    if (dateTo) params.set('to', dateTo)
+    setSearchParams(params, { replace: true })
+  }, [search, statusFilter, siteFilter, dateFrom, dateTo, setSearchParams])
+
+  useEffect(() => {
+    setSearch(searchFromUrl)
+    setStatusFilter(statusFromUrl)
+    setSiteFilter(siteFromUrl)
+    setDateFrom(dateFromUrl)
+    setDateTo(dateToUrl)
+  }, [searchFromUrl, statusFromUrl, siteFromUrl, dateFromUrl, dateToUrl])
+
   const { data, isLoading, refetch } = usePickupSamples()
   const syncMutation = useSyncPickups()
   const { data: sites = [] } = useSites()
+
+  const filters: SearchFilters = useMemo(
+    () => ({
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      siteId: siteFilter === 'all' ? undefined : siteFilter,
+      startDate: dateFrom || undefined,
+      endDate: dateTo || undefined,
+    }),
+    [statusFilter, siteFilter, dateFrom, dateTo]
+  )
+
+  const handleFiltersChange = (f: SearchFilters) => {
+    const statusVal = f.status
+    setStatusFilter(
+      Array.isArray(statusVal) ? (statusVal[0] ?? 'all') : (statusVal ?? 'all')
+    )
+    setSiteFilter(f.siteId ?? 'all')
+    setDateFrom(f.startDate ?? '')
+    setDateTo(f.endDate ?? '')
+  }
+
+  const handleLoadSavedSearch = (saved: SavedSearch) => {
+    setSearch(saved.query ?? '')
+    setStatusFilter(
+      Array.isArray(saved.filters?.status)
+        ? (saved.filters?.status[0] ?? 'all')
+        : (saved.filters?.status ?? 'all')
+    )
+    setSiteFilter(saved.filters?.siteId ?? 'all')
+    setDateFrom(saved.filters?.startDate ?? '')
+    setDateTo(saved.filters?.endDate ?? '')
+  }
 
   const pickups = data?.merged ?? []
   const pendingCount = (pickups ?? []).filter(
@@ -276,98 +336,107 @@ export function SampleListPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search sample ID, vial ID, site, notes..."
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <SearchBar
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
+                  onChange={setSearch}
+                  placeholder="Search sample ID, vial ID, site, notes..."
+                  entityType="samples"
                 />
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-[160px]"
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={siteFilter}
-                onChange={(e) => setSiteFilter(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-[180px]"
-              >
-                <option value="all">All sites</option>
-                {(sites ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setShowFilters(!showFilters)}
-                aria-label="Toggle filters"
-              >
-                <Filter className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-[160px]"
+                  aria-label="Filter by status"
+                >
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={siteFilter}
+                  onChange={(e) => setSiteFilter(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-[180px]"
+                  aria-label="Filter by site"
+                >
+                  <option value="all">All sites</option>
+                  {(sites ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSavedSearchOpen(true)}
+                  aria-label="Manage saved searches"
+                >
+                  <Bookmark className="h-4 w-4 mr-1" />
+                  Saved
+                </Button>
+              </div>
             </div>
-            {showFilters && (
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-6">
-                <Input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  placeholder="From"
-                />
-                <Input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  placeholder="To"
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="14"
-                  placeholder="pH min"
-                  value={pHMin}
-                  onChange={(e) => setPHMin(e.target.value)}
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="14"
-                  placeholder="pH max"
-                  value={pHMax}
-                  onChange={(e) => setPHMax(e.target.value)}
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="Cl min (ppm)"
-                  value={chlorineMin}
-                  onChange={(e) => setChlorineMin(e.target.value)}
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="Cl max (ppm)"
-                  value={chlorineMax}
-                  onChange={(e) => setChlorineMax(e.target.value)}
-                />
-              </div>
-            )}
+            <FacetedFilterPanel
+              filters={filters}
+              onChange={handleFiltersChange}
+              entityType="samples"
+              statusOptions={STATUS_OPTIONS}
+              sites={(sites ?? []).map((s) => ({ id: s.id, name: s.name }))}
+            />
+            <SavedSearchManager
+              open={savedSearchOpen}
+              onOpenChange={setSavedSearchOpen}
+              onLoadSearch={handleLoadSavedSearch}
+              currentFilters={filters}
+              currentQuery={search}
+              currentType="samples"
+            />
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="14"
+                placeholder="pH min"
+                value={pHMin}
+                onChange={(e) => setPHMin(e.target.value)}
+                aria-label="pH minimum"
+              />
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="14"
+                placeholder="pH max"
+                value={pHMax}
+                onChange={(e) => setPHMax(e.target.value)}
+                aria-label="pH maximum"
+              />
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="Cl min (ppm)"
+                value={chlorineMin}
+                onChange={(e) => setChlorineMin(e.target.value)}
+                aria-label="Chlorine minimum"
+              />
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                placeholder="Cl max (ppm)"
+                value={chlorineMax}
+                onChange={(e) => setChlorineMax(e.target.value)}
+                aria-label="Chlorine maximum"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>

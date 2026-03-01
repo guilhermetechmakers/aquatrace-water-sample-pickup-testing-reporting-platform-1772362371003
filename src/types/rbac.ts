@@ -17,6 +17,7 @@ export type Resource =
   | 'customers'
   | 'invoicing'
   | 'analytics'
+  | 'search'
 
 export interface Permission {
   id: string

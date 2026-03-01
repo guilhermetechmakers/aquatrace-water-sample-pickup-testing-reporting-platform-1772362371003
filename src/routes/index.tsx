@@ -39,6 +39,7 @@ import { AdminPage } from '@/pages/dashboard/admin'
 import { TechnicianDashboardPage } from '@/pages/dashboard/technician-dashboard'
 import { SamplePickupFormPage } from '@/pages/dashboard/sample-pickup-form'
 import { SampleListPage } from '@/pages/dashboard/sample-list'
+import { SearchPage } from '@/pages/dashboard/search-page'
 import { SampleDetailsPage } from '@/pages/dashboard/sample-details'
 
 import { CustomerPortalPage } from '@/pages/customer/portal'
@@ -121,6 +122,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardOverview /> },
+      { path: 'search', element: <SearchPage /> },
       {
         path: 'pickups',
         children: [
