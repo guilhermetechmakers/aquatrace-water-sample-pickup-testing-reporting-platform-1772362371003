@@ -1,16 +1,96 @@
-import { FlaskConical, Upload, Search } from 'lucide-react'
+import { useState } from 'react'
+import { FlaskConical, Upload, Search, Save, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-
-const mockQueue = [
-  { id: 'SMP-2024-002', site: 'Building B', arrived: '2 hrs ago' },
-  { id: 'SMP-2024-004', site: 'Building D', arrived: '4 hrs ago' },
-]
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { usePickups } from '@/hooks/usePickups'
+import { useLabResults, useCreateLabResult } from '@/hooks/useLabResults'
+import { useRBAC } from '@/hooks/useRBAC'
+import { format } from 'date-fns'
 
 export function LabQueuePage() {
-  const loading = false
+  const { hasPermission } = useRBAC()
+  const { data: pickups = [], isLoading: pickupsLoading } = usePickups()
+  const { data: labResults = [] } = useLabResults()
+  const createLabResult = useCreateLabResult()
+
+  const [search, setSearch] = useState('')
+  const [selectedPickup, setSelectedPickup] = useState<{ id: string; location: string } | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [spc, setSpc] = useState('')
+  const [totalColiform, setTotalColiform] = useState('')
+
+  const pickupsWithResults = (pickups ?? []).filter((p) => p.status === 'completed')
+  const pickupsNeedingResults = pickupsWithResults.filter(
+    (p) => !(labResults ?? []).some((lr) => lr.pickup_id === p.id)
+  )
+  const filteredQueue = search.trim()
+    ? pickupsNeedingResults.filter(
+        (p) =>
+          p.location.toLowerCase().includes(search.toLowerCase()) ||
+          p.id.toLowerCase().includes(search.toLowerCase())
+      )
+    : pickupsNeedingResults
+
+  const handleEnterResults = (p: { id: string; location: string }) => {
+    setSelectedPickup(p)
+    setSpc('')
+    setTotalColiform('')
+    setDialogOpen(true)
+  }
+
+  const handleSaveResults = () => {
+    if (!selectedPickup) return
+    const spcNum = parseFloat(spc)
+    const coliformNum = parseFloat(totalColiform)
+    if (isNaN(spcNum) || isNaN(coliformNum)) {
+      toast.error('Enter valid SPC and Total Coliform values')
+      return
+    }
+    createLabResult.mutate(
+      {
+        pickup_id: selectedPickup.id,
+        spc: spcNum,
+        total_coliform: coliformNum,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Results saved')
+          setDialogOpen(false)
+          setSelectedPickup(null)
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : 'Save failed'),
+      }
+    )
+  }
+
+  const loading = pickupsLoading
+
+  if (!hasPermission('lab_results', 'read') && !hasPermission('lab_results', 'create')) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle>Access Denied</CardTitle>
+            <CardDescription>
+              You do not have permission to access the lab queue.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -36,7 +116,12 @@ export function LabQueuePage() {
             </div>
             <div className="relative mt-4">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search samples..." className="pl-9" />
+              <Input
+                placeholder="Search samples..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -48,19 +133,25 @@ export function LabQueuePage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {mockQueue.map((s) => (
+                {(filteredQueue ?? []).map((s) => (
                   <div
                     key={s.id}
-                    className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/30 transition-colors"
                   >
                     <div>
-                      <p className="font-mono font-medium">{s.id}</p>
-                      <p className="text-sm text-muted-foreground">{s.site} · Arrived {s.arrived}</p>
+                      <p className="font-mono font-medium text-sm">{s.id.slice(0, 12)}...</p>
+                      <p className="text-sm text-muted-foreground">
+                        {s.location} · {s.completed_at ? format(new Date(s.completed_at), 'PPp') : '—'}
+                      </p>
                     </div>
-                    <Button size="sm">Enter Results</Button>
+                    {hasPermission('lab_results', 'create') && (
+                      <Button size="sm" onClick={() => handleEnterResults({ id: s.id, location: s.location })}>
+                        Enter Results
+                      </Button>
+                    )}
                   </div>
                 ))}
-                {mockQueue.length === 0 && (
+                {(filteredQueue ?? []).length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
                     <FlaskConical className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>No samples in queue</p>
@@ -78,7 +169,7 @@ export function LabQueuePage() {
           <CardContent className="space-y-4">
             <div className="flex justify-between">
               <span className="text-muted-foreground">In Queue</span>
-              <span className="font-semibold">{mockQueue.length}</span>
+              <span className="font-semibold">{filteredQueue.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Processed Today</span>
@@ -91,6 +182,56 @@ export function LabQueuePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter Lab Results</DialogTitle>
+            <DialogDescription>
+              SPC and Total Coliform for {selectedPickup?.location}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="spc">SPC (Standard Plate Count)</Label>
+              <Input
+                id="spc"
+                type="number"
+                step="0.1"
+                placeholder="0"
+                value={spc}
+                onChange={(e) => setSpc(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="coliform">Total Coliform</Label>
+              <Input
+                id="coliform"
+                type="number"
+                step="0.1"
+                placeholder="0"
+                value={totalColiform}
+                onChange={(e) => setTotalColiform(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveResults} disabled={createLabResult.isPending}>
+              {createLabResult.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

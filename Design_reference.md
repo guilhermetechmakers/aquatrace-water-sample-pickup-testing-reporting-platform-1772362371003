@@ -326,27 +326,258 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-typography scales, color tokens, spacing, and component variants
-- Consistent form layouts with labels, helper texts, and clear error states
-- Provide loading indicators during API calls; optimistic UI updates where appropriate with rollback on error
-- Provide concise, actionable success and error messages
-- Ensure mobile-first responsiveness with a clean two-column layout on larger viewports
+# Role-Based Access Control (RBAC)
+
+## Overview
+Build a centralized RBAC system for AquaTrace that defines and enforces permissions across five roles: Technician, Lab Tech, Lab Manager, Admin, Customer viewer. Implement permission storage, middleware for route/API access checks, attribute-based access control where needed (e.g., customers view only their reports), audit logs for role changes, and an Admin UI to manage roles, permissions, and user invitations. Align with the AquaTrace project context (water sample pickup, onsite logging, lab testing, approval, PDF distribution, customer visibility). Ensure mobile-first experiences for field technicians (site pickups, GPS capture, readings, photos) and robust admin workflows.
+
+## Components to Build
+- RBAC Core Model
+  - Role definitions and capability matrix (CRUD-ready for five roles)
+  - Permission granularity: page access, API actions, data visibility, and admin operations
+  - Audit logging for role creation, updates, and user-role changes
+- User Management & Invitations
+  - Admin UI to manage roles, invite users, assign roles, and reset credentials
+  - Email/SMS invitation workflow (stubbed with callbacks for integration)
+- Access Control Middleware
+  - Global route guards for frontend pages and backend APIs
+  - Attribute-based access: restrict data by customer owner, lab, or technician assignment
+- Data Layer & Validation
+  - Permission-aware queries and mutations
+  - Validation rules ensuring no leakage across customers
+- Technician Dashboard (Mobile)
+  - Mobile-first interface for field technicians
+  - Features: view assigned pickups, capture sample readings (pH, Chlorine), upload photos, capture GPS location, offline sync, conflict resolution, data timestamping
+- Audit & Reporting
+  - Audit logs for role changes, data access events, and sync operations
+  - Admin dashboards to review permissions changes and access events
+- Admin Console
+  - Role-permission matrix editor
+  - User invitation and role assignment
+  - Logs and export options (CSV/PDF)
+
+## Implementation Requirements
+
+### Frontend
+- Architecture
+  - Use React (or your preferred modern framework) with a clean separation of concerns: components, hooks, services, and state management
+  - Centralized RBAC hook or context (e.g., useRBAC) that exposes currentUser, hasPermission(permission), and getVisibleData(schema)
+- UI Components and Pages
+  - RBAC Admin Page (page_013 or equivalent)
+    - Display role definitions, permissions matrix (read/write/delete/create for each capability)
+    - Create/Update/Delete roles (with validation to prevent orphaned permissions)
+    - Invite User modal with auto-generated onboarding workflow
+  - User Management Page (linked from Admin)
+    - List users with roles, status, last login; actions: change role, suspend, resend invite
+  - Permissions Audit Page (page_011)
+    - Filterable audit logs: action, actor, target, timestamp, payload diff
+  - Customer Access Portal (page_015)
+    - Scoped access to customer data based on role; show only their reports for Customer viewer
+  - Technician Mobile Dashboard (page_005 or dedicated mobile route)
+    - Map/geolocation capture (optional), assigned pickups list, add readings (pH, Chlorine), upload photos, offline sync indicators
+  - Lab Tech Dashboard (page_009)
+    - Enter SPC and Total Coliform results linked to specific pickup, validation, and save
+  - Lab Manager Dashboard (page_011)
+    - Approve results, generate PDFs, trigger distribution to customer
+  - Admin-only workbooks and utilities
+- Data Handling
+  - Safeguard all array operations
+  - Use data ?? [] with Supabase-like results; ensure Array.isArray checks before map/filter
+  - Initialize useState with proper defaults: useState<Type[]>([])
+  - Optional chaining for nested API responses
+- Accessibility and UX
+  - Clear permission indicators on UI elements (disabled/hidden if not permitted)
+  - Consistent styling with existing app; responsive/mobile-friendly patterns
+  - Safe form handling with validation and user feedback
+- Offline & Sync
+  - Local persistence for technician data with background sync
+  - Conflict resolution strategy and user prompts
+- Security Considerations
+  - Role-based route guards on all protected pages
+  - Ensure sensitive actions require appropriate permissions (e.g., Admin actions)
+  - Audit trails for role changes and data-access events
+
+### Backend
+- APIs and Microservices
+  - RBAC API: endpoints to fetch roles, permissions, create/update/delete roles, and audit logs
+  - User API: fetch users, assign roles, invite users, suspend/reactivate
+  - Access Control Middleware: reusable function to verify permissions on routes
+  - Data APIs for AquaTrace domain ( pickups, readings, lab results, PDFs )
+  - PDF generation endpoint for Lab Manager to compile and distribute reports
+- Database Tables
+  - roles: id, name ( Technician, Lab Tech, Lab Manager, Admin, Customer viewer ), description
+  - permissions: id, role_id, resource, action, scope (e.g., global, owner, ownReport)
+  - role_changes_audit: id, actor_id, target_user_id, from_role, to_role, timestamp, reason
+  - users: id, email, name, role_id, status, invitation_token, invited_at, last_login
+  - pickups: id, technician_id, location, gps, readings, photos, status
+  - lab_results: id, pickup_id, spc, total_coliform, approved_by, approved_at, pdf_link
+  - customer_reports: id, customer_id, pickup_id, accessible_by_customer_only
+- Business Logic
+  - Attribute-based access: customers can only view their reports; technicians only see their pickups; labs see assigned lab tasks
+  - Data privacy: ensure that queries join with ownership constraints
+  - Audit logging: record role changes, login events, data access, and distribution actions
+
+### Integration
+- Frontend ↔ Backend
+  - Consistent auth token handling
+  - RBAC middleware on protected routes
+  - Data-fetch hooks that respect permissions and owner constraints
+- External Services
+  - PDF generation service (stub or integrated)
+  - Email/SMS notification for invitations
+  - GIS/location services for GPS capture on mobile
+- Data Consistency
+  - Validation layers on both client and server
+  - Null-safety in arrays and API responses (see runtime safety rules)
+
+## User Experience Flow
+1. Admin logs in
+   - Sees Admin Console with Role Matrix
+   - Creates/edits roles and assigns permissions
+   - Invites new users; selects a role
+2. Admin invites a Technician
+   - Email invite with onboarding steps
+   - Technician creates account, lands on their mobile dashboard
+3. Technician Mobile Experience
+   - Logs in on mobile; sees assigned pickups
+   - Starts a pickup: capture GPS, log pH and Chlorine, snap photos
+   - Syncs data when online; app stores offline edits
+4. Lab Tech Experience
+   - Sees new pickups assigned for testing
+   - Inputs SPC and Total Coliform results; saves
+5. Lab Manager Experience
+   - Reviews lab results
+   - Approves results and triggers PDF generation
+   - Distributes PDF to customer; audit logs updated
+6. Customer Viewer Experience
+   - Logs in with Customer viewer role
+   - Views only their reports; cannot modify data
+7. Admin Audit
+   - Admin reviews role-change events and access logs; exports as needed
+
+## Technical Specifications
+
+- Data Models: Schema details
+  - roles
+    - id: UUID
+    - name: string (Technician, Lab Tech, Lab Manager, Admin, Customer viewer)
+    - description: string
+  - permissions
+    - id: UUID
+    - role_id: UUID -> roles.id
+    - resource: string (e.g., "pickup", "lab_results", "admin_ui", "reports")
+    - action: string ("read", "create", "update", "delete", "execute")
+    - scope: string ("global", "owner", "ownReport", "organization")
+  - role_changes_audit
+    - id: UUID
+    - actor_id: UUID -> users.id
+    - target_user_id: UUID -> users.id
+    - from_role: string
+    - to_role: string
+    - timestamp: timestamp
+    - reason: string
+  - users
+    - id: UUID
+    - email: string
+    - name: string
+    - role_id: UUID -> roles.id
+    - status: string ("active", "invited", "suspended")
+    - invitation_token: string
+    - invited_at: timestamp
+    - last_login: timestamp
+  - pickups
+    - id: UUID
+    - technician_id: UUID -> users.id
+    - location: string
+    - gps_lat: float
+    - gps_lng: float
+    - readings: object (pH, Chlorine, etc.)
+    - photos: array of string (photo URLs)
+    - status: string ("scheduled", "in_progress", "completed")
+  - lab_results
+    - id: UUID
+    - pickup_id: UUID -> pickups.id
+    - spc: float
+    - total_coliform: float
+    - approved_by: UUID -> users.id
+    - approved_at: timestamp
+    - pdf_link: string
+- API Endpoints: Routes and methods
+  - POST /api/roles
+  - GET /api/roles
+  - GET /api/roles/:id
+  - PUT /api/roles/:id
+  - DELETE /api/roles/:id
+  - POST /api/users/invite
+  - GET /api/users
+  - PATCH /api/users/:id/role
+  - POST /api/audit/logs
+  - GET /api/audit/logs
+  - GET /api/pickups
+  - POST /api/pickups/:id/ readings
+  - POST /api/pickups/:id/photos
+  - POST /api/lab_results
+  - PUT /api/lab_results/:id/approve
+  - GET /api/reports (customer-scoped)
+  - GET /api/reports/:id/pdf
+  - POST /api/reports/:id/distribute
+- Security: Authentication, authorization requirements
+  - JWT/OAuth-based authentication with short-lived tokens
+  - Middleware to enforce access by role and scope
+  - Attribute-based checks (owner, technician assignment, customer ownership)
+  - Audit log persistence on sensitive actions
+- Validation: Input validation rules
+  - Required fields, proper formats (emails, timestamps, lat/lng)
+  - Role and permission integrity checks
+  - Validation of file uploads (photos) and GPS coordinates
+
+## Acceptance Criteria
+- [ ] RBAC core can create, read, update, and delete roles and permissions without breaking existing data
+- [ ] Middleware correctly blocks unauthorized pages/APIs and allows permitted ones
+- [ ] All data-fetching and mutations use null-safe patterns (data ?? [], Array.isArray checks, defaults for useState)
+- [ ] Technician mobile workflow supports GPS capture, readings, photo uploads, and offline sync
+- [ ] Lab results flow supports input, approval by Lab Manager, PDF generation, and customer distribution
+- [ ] Customer viewer can access only their reports; no write permissions
+- [ ] Admin UI can invite users and assign roles; audit logs populate correctly
+- [ ] Audit logs: every role change and access event is recorded and queryable
+- [ ] UI adheres to existing design system and accessibility guidelines
+
+## UI/UX Guidelines
+- Maintain consistent styling with AquaTrace UI: typography, color tokens, spacing, and components
+- Permission-aware affordances: show/hide or disable UI controls based on hasPermission
+- Mobile-first patterns for Technician Dashboard; graceful fallback on larger screens
+- Clear feedback for success/failure with actionable error messages
+- Disabled states for unauthorized actions with guidance on how to request access
 
 ## Mandatory Coding Standards — Runtime Safety
 
 CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
 
-1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null (not []) when there are no rows.
-2. Array methods: Never call on a value that could be null, undefined, or a non-array. Always guard:
-   - (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : []
-3. React useState for arrays/objects: Always initialize with the correct type — useState<Type[]>([]), never useState() or useState(null) for arrays.
-4. API response shapes: Always validate — const list = Array.isArray(response?.data) ? response.data : []
-5. Optional chaining: Use obj?.property?.nested when accessing nested objects from API responses or database queries.
-6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
+1. Supabase-like query results
+   - Always use nullish coalescing: const items = data ?? []
+   - When assigning from response: const list = Array.isArray(response?.data) ? response.data : []
+2. Array methods safety
+   - Guard before map/filter/reduce: (items ?? []).map(...); or Array.isArray(items) ? items.map(...) : []
+3. React useState for arrays/objects
+   - Initialize with correct type: const [items, setItems] = useState<Type[]>([])
+4. API response shapes
+   - Validate: const list = Array.isArray(response?.data) ? response.data : []
+5. Optional chaining
+   - Use for nested API responses: obj?.property?.nested
+6. Destructuring with defaults
+   - const { items = [], count = 0 } = response ?? {}
+
+## Project Context Alignment
+- Target Feature: RBAC across five roles with permission mapping and enforcement
+- Attribute-based access: customer views only their reports; techs view their pickups
+- Audit logs for role changes and access events
+- Admin UI to manage roles, permissions, and invites
+- Associated Pages mapping to project pages: page_005 (Technician Mobile Dashboard), page_009 (Lab Tech), page_011 (Lab Manager), page_013 (Admin Console), page_015 (Customer Portal)
+- Ensure workflow supports AquaTrace processes: pickup, onsite testing, lab testing, approval, PDF distribution
 
 ---
 
-If you need, I can tailor this prompt further to your chosen tech stack (e.g., Next.js with Supabase, React Native for mobile, GraphQL vs REST, testing framework preferences) or add concrete data diagrams and code skeletons.
+If you’d like, I can produce a concrete starter code scaffold (TypeScript/React + Node.js) with the RBAC data model, middleware, sample UI components, and example API routes that adhere to the runtime safety rules above.
 
 ## Implementation Notes
 

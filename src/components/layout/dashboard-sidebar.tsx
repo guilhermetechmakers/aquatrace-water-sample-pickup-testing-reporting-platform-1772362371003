@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSidebar } from '@/contexts/sidebar-context'
 import { useAuth } from '@/contexts/auth-context'
@@ -16,27 +16,40 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  MapPin,
+  Shield,
+  UserCog,
+  FileCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 
-const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-  { to: '/dashboard/samples', icon: Droplets, label: 'Samples' },
-  { to: '/dashboard/lab', icon: FlaskConical, label: 'Lab Queue' },
-  { to: '/dashboard/approvals', icon: CheckSquare, label: 'Approvals' },
-  { to: '/dashboard/reports', icon: FileText, label: 'Reports' },
-  { to: '/dashboard/customers', icon: Users, label: 'Customers' },
-  { to: '/dashboard/invoicing', icon: DollarSign, label: 'Invoicing' },
-  { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics' },
+const allNavItems = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/pickups', icon: MapPin, label: 'My Pickups', roles: ['TECHNICIAN'] },
+  { to: '/dashboard/samples', icon: Droplets, label: 'Samples', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/lab', icon: FlaskConical, label: 'Lab Queue', roles: ['LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/approvals', icon: CheckSquare, label: 'Approvals', roles: ['LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/reports', icon: FileText, label: 'Reports', roles: ['LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/customers', icon: Users, label: 'Customers', roles: ['LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/invoicing', icon: DollarSign, label: 'Invoicing', roles: ['LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', roles: ['LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/admin', icon: Shield, label: 'Admin', roles: ['ADMIN'] },
+  { to: '/dashboard/users', icon: UserCog, label: 'Users', roles: ['ADMIN'] },
+  { to: '/dashboard/audit', icon: FileCheck, label: 'Audit Log', roles: ['ADMIN'] },
 ]
 
 export function DashboardSidebar() {
   const { collapsed, setCollapsed } = useSidebar()
-  const { signOut } = useAuth()
+  const { signOut, user } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+
+  const navItems = useMemo(() => {
+    const role = user?.role ?? ''
+    return allNavItems.filter((item) => item.roles.includes(role))
+  }, [user?.role])
 
   return (
     <>
@@ -81,7 +94,7 @@ export function DashboardSidebar() {
           </div>
 
           <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-            {navItems.map((item) => {
+            {(navItems ?? []).map((item) => {
               const isActive = location.pathname === item.to
               const Icon = item.icon
               return (

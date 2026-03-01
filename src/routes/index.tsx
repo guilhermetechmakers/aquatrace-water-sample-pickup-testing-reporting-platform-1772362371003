@@ -23,6 +23,8 @@ import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
 import { ProfilePage } from '@/pages/dashboard/profile'
+import { AdminPage } from '@/pages/dashboard/admin'
+import { PickupsPage as TechnicianPickupsPage } from '@/pages/dashboard/pickups'
 
 import { CustomerPortalPage } from '@/pages/customer/portal'
 import { HelpPage } from '@/pages/help'
@@ -102,6 +104,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardOverview /> },
+      { path: 'pickups', element: <TechnicianPickupsPage /> },
       { path: 'samples', element: <SamplesPage /> },
       { path: 'lab', element: <LabQueuePage /> },
       { path: 'approvals', element: <ApprovalsPage /> },
@@ -109,6 +112,9 @@ export const router = createBrowserRouter([
       { path: 'customers', element: <CustomersPage /> },
       { path: 'invoicing', element: <InvoicingPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },
+      { path: 'admin', element: <AdminPage /> },
+      { path: 'users', element: <AdminPage /> },
+      { path: 'audit', element: <AdminPage /> },
       { path: 'settings', element: <Navigate to="/dashboard/profile" replace /> },
       { path: 'profile', element: <ProfilePage /> },
     ],
