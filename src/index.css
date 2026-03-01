@@ -1,68 +1,74 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    /* AquaTrace Design System - Light Mode */
+    --primary: 0 109 100; /* Deep Teal #006D64 */
+    --primary-foreground: 255 255 255;
+    --secondary: 247 249 251; /* Light Neutral */
+    --secondary-foreground: 58 74 87; /* Slate Gray */
+    --accent: 0 179 166; /* Aqua #00B3A6 */
+    --accent-foreground: 255 255 255;
+    --background: 247 249 251; /* Light Neutral #F7F9FB */
+    --foreground: 58 74 87; /* Slate Gray #3A4A57 */
+    --card: 255 255 255; /* White #FFFFFF */
+    --card-foreground: 58 74 87;
+    --border: 226 232 240;
+    --input: 226 232 240;
+    --ring: 0 109 100;
+    --muted: 241 245 249;
+    --muted-foreground: 100 116 139;
+    --destructive: 220 53 69; /* Crimson #DC3545 */
+    --success: 40 167 69; /* Green #28A745 */
+    --warning: 255 193 7; /* Amber #FFC107 */
   }
-  a:hover {
-    color: #747bff;
+
+  .dark {
+    --primary: 0 179 166; /* Aqua for dark mode */
+    --primary-foreground: 15 23 42;
+    --secondary: 30 41 59;
+    --secondary-foreground: 248 250 252;
+    --accent: 0 179 166;
+    --accent-foreground: 15 23 42;
+    --background: 15 23 42;
+    --foreground: 248 250 252;
+    --card: 30 41 59;
+    --card-foreground: 248 250 252;
+    --border: 51 65 85;
+    --input: 51 65 85;
+    --ring: 0 179 166;
+    --muted: 51 65 85;
+    --muted-foreground: 148 163 184;
+    --destructive: 239 68 68;
+    --success: 34 197 94;
+    --warning: 234 179 8;
   }
-  button {
-    background-color: #f9f9f9;
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.5;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

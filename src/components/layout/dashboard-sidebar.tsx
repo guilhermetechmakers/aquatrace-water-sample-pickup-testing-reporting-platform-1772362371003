@@ -1,0 +1,129 @@
+import { useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { useSidebar } from '@/contexts/sidebar-context'
+import {
+  LayoutDashboard,
+  Droplets,
+  FlaskConical,
+  CheckSquare,
+  FileText,
+  Users,
+  DollarSign,
+  BarChart3,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+
+const navItems = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/dashboard/samples', icon: Droplets, label: 'Samples' },
+  { to: '/dashboard/lab', icon: FlaskConical, label: 'Lab Queue' },
+  { to: '/dashboard/approvals', icon: CheckSquare, label: 'Approvals' },
+  { to: '/dashboard/reports', icon: FileText, label: 'Reports' },
+  { to: '/dashboard/customers', icon: Users, label: 'Customers' },
+  { to: '/dashboard/invoicing', icon: DollarSign, label: 'Invoicing' },
+  { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics' },
+]
+
+export function DashboardSidebar() {
+  const { collapsed, setCollapsed } = useSidebar()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed left-4 top-4 z-50 lg:hidden"
+        onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label="Toggle menu"
+      >
+        <Menu className="h-6 w-6" />
+      </Button>
+
+      <aside
+        className={cn(
+          'fixed left-0 top-0 z-40 h-screen border-r border-border bg-card transition-all duration-300',
+          collapsed ? 'w-[72px]' : 'w-64',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        )}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex h-16 items-center justify-between border-b border-border px-4">
+            {!collapsed && (
+              <Link to="/dashboard" className="flex items-center gap-2">
+                <Droplets className="h-8 w-8 text-primary" />
+                <span className="text-xl font-bold text-foreground">AquaTrace</span>
+              </Link>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden lg:flex"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? (
+                <ChevronRight className="h-5 w-5" />
+              ) : (
+                <ChevronLeft className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
+
+          <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.to
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <Separator />
+          <div className="p-4">
+            <Link
+              to="/dashboard/settings"
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
+                location.pathname === '/dashboard/settings' && 'bg-secondary text-foreground'
+              )}
+            >
+              <Settings className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Settings</span>}
+            </Link>
+          </div>
+        </div>
+
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+      </aside>
+    </>
+  )
+}
