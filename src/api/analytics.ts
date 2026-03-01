@@ -12,6 +12,7 @@ import type {
   AnalyticsExport,
   AnalyticsFilters,
   ErrorRateBreakdown,
+  SLAComplianceByCustomer,
 } from '@/types/analytics'
 import { subDays, format, startOfDay, endOfDay } from 'date-fns'
 
@@ -456,4 +457,123 @@ export async function requestExport(
   }
 
   return { jobId: id, status: 'pending' }
+}
+
+/** Fetch SLA compliance by customer for heatmap */
+export async function fetchSLAComplianceByCustomer(
+  filters?: AnalyticsFilters
+): Promise<{ data: SLAComplianceByCustomer[] }> {
+  if (!isSupabaseConfigured()) {
+    return { data: [] }
+  }
+
+  const { start, end } = defaultDateRange()
+  const startDate = filters?.startDate ?? start
+  const endDate = filters?.endDate ?? end
+  const startTs = startOfDay(new Date(startDate)).toISOString()
+  const endTs = endOfDay(new Date(endDate)).toISOString()
+
+  const { data: pickupsData } = await supabase
+    .from('pickups')
+    .select('id, customer_id')
+    .gte('created_at', startTs)
+    .lte('created_at', endTs)
+
+  const pickups = Array.isArray(pickupsData) ? pickupsData : []
+  const customerIds = [...new Set(pickups.map((p: { customer_id: string | null }) => p.customer_id).filter(Boolean))] as string[]
+
+  if (customerIds.length === 0) {
+    return { data: [] }
+  }
+
+  const { data: customersData } = await supabase
+    .from('customers')
+    .select('id, name')
+    .in('id', customerIds)
+
+  const customers = Array.isArray(customersData) ? customersData : []
+  const customerMap = Object.fromEntries(customers.map((c: { id: string; name: string }) => [c.id, c.name ?? 'Unknown']))
+
+  const pickupIds = pickups.map((p: { id: string }) => p.id)
+  let approvals: { result_id: string; status: string; sla_due: string | null }[] = []
+  if (pickupIds.length > 0) {
+    const { data: lrData } = await supabase
+      .from('lab_results')
+      .select('id, pickup_id')
+      .in('pickup_id', pickupIds)
+    const labResults = Array.isArray(lrData) ? lrData : []
+    const resultIds = labResults.map((r: { id: string }) => r.id)
+    if (resultIds.length > 0) {
+      const { data: appData } = await supabase
+        .from('approvals')
+        .select('result_id, status, sla_due')
+        .in('result_id', resultIds)
+      approvals = Array.isArray(appData) ? appData : []
+    }
+  }
+
+  const { data: lrData } = await supabase
+    .from('lab_results')
+    .select('id, pickup_id')
+    .in('pickup_id', pickupIds)
+  const labResults = Array.isArray(lrData) ? lrData : []
+  const resultToPickup = new Map<string, string>()
+  for (const lr of labResults) {
+    resultToPickup.set((lr as { id: string }).id, (lr as { pickup_id: string }).pickup_id)
+  }
+  const pickupToCustomer = new Map<string, string>()
+  for (const p of pickups) {
+    const cid = (p as { customer_id: string | null }).customer_id
+    if (cid) pickupToCustomer.set((p as { id: string }).id, cid)
+  }
+
+  const byCustomer: Record<string, { total: number; onTime: number }> = {}
+  for (const a of approvals) {
+    const pickupId = resultToPickup.get((a as { result_id: string }).result_id)
+    const customerId = pickupId ? pickupToCustomer.get(pickupId) : null
+    if (!customerId) continue
+    if (!byCustomer[customerId]) byCustomer[customerId] = { total: 0, onTime: 0 }
+    byCustomer[customerId].total++
+    const status = (a as { status: string }).status
+    const slaDue = (a as { sla_due: string | null }).sla_due
+    if (status === 'approved' || (slaDue && new Date(slaDue) >= new Date())) {
+      byCustomer[customerId].onTime++
+    }
+  }
+
+  const data: SLAComplianceByCustomer[] = Object.entries(byCustomer).map(([customerId, v]) => ({
+    customerId,
+    customerName: customerMap[customerId] ?? 'Unknown',
+    compliance: v.total > 0 ? Math.round((v.onTime / v.total) * 100) : 0,
+    total: v.total,
+    onTime: v.onTime,
+  }))
+  data.sort((a, b) => b.compliance - a.compliance)
+
+  return { data }
+}
+
+/** Schedule a recurring export */
+export async function scheduleExport(
+  payload: { type: 'pdf' | 'csv'; schedule: 'daily' | 'weekly' | 'monthly'; filters?: AnalyticsFilters }
+): Promise<{ scheduleId: string; status: string }> {
+  if (!isSupabaseConfigured()) {
+    return { scheduleId: '', status: 'pending' }
+  }
+
+  const { data, error } = await supabase
+    .from('analytics_exports')
+    .insert({
+      type: payload.type,
+      format: payload.type,
+      status: 'pending',
+      schedule: payload.schedule,
+      filter_snapshot: payload.filters ?? {},
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(error.message)
+  const id = (data as { id: string })?.id ?? ''
+  return { scheduleId: id, status: 'pending' }
 }

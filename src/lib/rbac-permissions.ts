@@ -65,6 +65,12 @@ const ROLE_PERMISSION_MATRIX: Record<AuthRole, PermissionMatrixEntry[]> = {
     { resource: 'invoicing', action: 'update', scope: 'global' },
     { resource: 'analytics', action: 'read', scope: 'global' },
   ],
+  VIEWER: [
+    { resource: 'analytics', action: 'read', scope: 'global' },
+    { resource: 'reports', action: 'read', scope: 'global' },
+    { resource: 'search', action: 'read', scope: 'global' },
+    { resource: 'attachments', action: 'read', scope: 'global' },
+  ],
   CUSTOMER_VIEW: [
     { resource: 'reports', action: 'read', scope: 'ownReport' },
   ],

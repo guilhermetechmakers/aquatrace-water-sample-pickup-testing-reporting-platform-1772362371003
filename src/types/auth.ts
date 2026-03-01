@@ -3,6 +3,7 @@ export type AuthRole =
   | 'LAB_TECH'
   | 'LAB_MANAGER'
   | 'ADMIN'
+  | 'VIEWER'
   | 'CUSTOMER_VIEW'
 
 export const AUTH_ROLES: AuthRole[] = [
@@ -10,6 +11,7 @@ export const AUTH_ROLES: AuthRole[] = [
   'LAB_TECH',
   'LAB_MANAGER',
   'ADMIN',
+  'VIEWER',
   'CUSTOMER_VIEW',
 ]
 
@@ -18,6 +20,7 @@ export const ROLE_LABELS: Record<AuthRole, string> = {
   LAB_TECH: 'Lab Technician',
   LAB_MANAGER: 'Lab Manager',
   ADMIN: 'Administrator',
+  VIEWER: 'Viewer',
   CUSTOMER_VIEW: 'Customer',
 }
 

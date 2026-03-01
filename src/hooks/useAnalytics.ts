@@ -10,7 +10,9 @@ import {
   fetchSLAAlerts,
   fetchErrorRates,
   fetchExports,
+  fetchSLAComplianceByCustomer,
   requestExport,
+  scheduleExport,
   acknowledgeSLAAlert,
   resolveSLAAlert,
 } from '@/api/analytics'
@@ -24,6 +26,8 @@ export const analyticsKeys = {
   alerts: (status?: string) => ['analytics', 'alerts', status] as const,
   errorRates: (filters?: AnalyticsFilters) => ['analytics', 'errorRates', filters] as const,
   exports: () => ['analytics', 'exports'] as const,
+  slaCompliance: (filters?: AnalyticsFilters) =>
+    ['analytics', 'slaCompliance', filters] as const,
 }
 
 export function useKPIs(filters?: AnalyticsFilters) {
@@ -94,6 +98,27 @@ export function useResolveSLAAlert() {
       resolveSLAAlert(alertId, notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: analyticsKeys.alerts() })
+    },
+  })
+}
+
+export function useSLAComplianceByCustomer(filters?: AnalyticsFilters) {
+  return useQuery({
+    queryKey: analyticsKeys.slaCompliance(filters),
+    queryFn: () => fetchSLAComplianceByCustomer(filters),
+  })
+}
+
+export function useScheduleExport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      type: 'pdf' | 'csv'
+      schedule: 'daily' | 'weekly' | 'monthly'
+      filters?: AnalyticsFilters
+    }) => scheduleExport(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: analyticsKeys.exports() })
     },
   })
 }

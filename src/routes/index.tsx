@@ -34,6 +34,10 @@ import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
 import { InvoiceDetailPage } from '@/pages/dashboard/invoice-detail'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
+import { AlertsCenterPage } from '@/pages/dashboard/analytics/alerts-center'
+import { ExportConsolePage } from '@/pages/dashboard/analytics/export-console'
+import { AnalyticsDetailsPage } from '@/pages/dashboard/analytics/analytics-details'
+import { AnalyticsSettingsPage } from '@/pages/dashboard/analytics/analytics-settings'
 import { ProfilePage } from '@/pages/dashboard/profile'
 import { AdminPage } from '@/pages/dashboard/admin'
 import { TechnicianDashboardPage } from '@/pages/dashboard/technician-dashboard'
@@ -167,7 +171,17 @@ export const router = createBrowserRouter([
           { path: ':id', element: <InvoiceDetailPage /> },
         ],
       },
-      { path: 'analytics', element: <AnalyticsPage /> },
+      {
+        path: 'analytics',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <AnalyticsPage /> },
+          { path: 'alerts', element: <AlertsCenterPage /> },
+          { path: 'exports', element: <ExportConsolePage /> },
+          { path: 'details', element: <AnalyticsDetailsPage /> },
+          { path: 'settings', element: <AnalyticsSettingsPage /> },
+        ],
+      },
       {
         path: 'admin',
         element: <Outlet />,

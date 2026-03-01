@@ -4,12 +4,14 @@
  */
 
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Clock,
   CheckCircle,
   FlaskConical,
   DollarSign,
   FileDown,
+  AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRBAC } from '@/hooks/useRBAC'
@@ -19,17 +21,20 @@ import {
   useSLAAlerts,
   useErrorRates,
   useExports,
+  useSLAComplianceByCustomer,
 } from '@/hooks/useAnalytics'
 import {
   KPICard,
   FilterBar,
   TrendChart,
   BarChartCard,
+  DonutChart,
+  SLAHeatmap,
   AlertsPanel,
   ScheduleExportModal,
   ExportList,
 } from '@/components/analytics'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { subDays, format } from 'date-fns'
 import type { AnalyticsFilters } from '@/types/analytics'
 
@@ -71,6 +76,7 @@ export function AnalyticsPage() {
   )
   const { data: errorData, isLoading: errorLoading } = useErrorRates(filters)
   const { data: exportsData, isLoading: exportsLoading } = useExports()
+  const { data: slaComplianceData, isLoading: slaLoading } = useSLAComplianceByCustomer(filters)
 
   const summary = kpiData?.summary ?? {
     avgTurnaroundTimeHours: 0,
@@ -116,6 +122,17 @@ export function AnalyticsPage() {
           <p className="mt-1 text-muted-foreground">
             Business KPIs, SLA monitoring, and exportable reports
           </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/dashboard/analytics/details">Drill Down</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/dashboard/analytics/exports">Exports</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/dashboard/analytics/settings">Settings</Link>
+            </Button>
+          </div>
         </div>
         {canExport && (
           <Button onClick={() => setExportModalOpen(true)}>
@@ -194,11 +211,25 @@ export function AnalyticsPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <BarChartCard
+        <DonutChart
           title="Test Volume by Type"
-          description="SPC vs Total Coliform"
+          description="SPC vs Total Coliform distribution"
           data={summary.testVolumeByType ?? {}}
         />
+        <SLAHeatmap
+          title="SLA Compliance by Customer"
+          description="On-time delivery rate per customer"
+          data={(slaComplianceData?.data ?? []).slice(0, 8).map((c) => ({
+            label: c.customerName,
+            compliance: c.compliance,
+            total: c.total,
+            onTime: c.onTime,
+          }))}
+          isLoading={slaLoading}
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <AlertsPanel
           alerts={alerts}
           isLoading={alertsLoading}
@@ -206,6 +237,24 @@ export function AnalyticsPage() {
           onStatusFilter={setAlertStatus}
           maxItems={8}
         />
+        <Card className="transition-all hover:shadow-card-hover">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-primary" />
+              Alerts Center
+            </CardTitle>
+            <CardDescription>
+              View and manage all SLA and KPI alerts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" asChild>
+              <Link to="/dashboard/analytics/alerts">
+                View All Alerts
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {canExport && (

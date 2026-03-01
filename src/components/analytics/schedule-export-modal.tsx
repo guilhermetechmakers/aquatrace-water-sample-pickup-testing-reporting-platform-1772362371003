@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { FileDown, Loader2 } from 'lucide-react'
+import { FileDown, Loader2, Calendar } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import type { AnalyticsFilters } from '@/types/analytics'
-import { useRequestExport } from '@/hooks/useAnalytics'
+import { useRequestExport, useScheduleExport } from '@/hooks/useAnalytics'
 
 export interface ScheduleExportModalProps {
   open: boolean
@@ -30,21 +30,43 @@ export function ScheduleExportModal({
   filters,
 }: ScheduleExportModalProps) {
   const [type, setType] = useState<'pdf' | 'csv'>('csv')
+  const [schedule, setSchedule] = useState<'once' | 'daily' | 'weekly' | 'monthly'>('once')
   const requestExport = useRequestExport()
+  const scheduleExport = useScheduleExport()
 
   const handleExport = () => {
-    requestExport.mutate(
-      { type, filters },
-      {
-        onSuccess: (r) => {
-          toast.success(`Export job created. Job ID: ${r.jobId}`)
-          onOpenChange(false)
+    if (schedule === 'once') {
+      requestExport.mutate(
+        { type, filters },
+        {
+          onSuccess: (r) => {
+            toast.success(`Export job created. Job ID: ${r.jobId}`)
+            onOpenChange(false)
+          },
+          onError: (e) =>
+            toast.error(e instanceof Error ? e.message : 'Export failed'),
+        }
+      )
+    } else {
+      scheduleExport.mutate(
+        {
+          type,
+          schedule: schedule as 'daily' | 'weekly' | 'monthly',
+          filters,
         },
-        onError: (e) =>
-          toast.error(e instanceof Error ? e.message : 'Export failed'),
-      }
-    )
+        {
+          onSuccess: (r) => {
+            toast.success(`Scheduled export created. ID: ${r.scheduleId}`)
+            onOpenChange(false)
+          },
+          onError: (e) =>
+            toast.error(e instanceof Error ? e.message : 'Schedule failed'),
+        }
+      )
+    }
   }
+
+  const isPending = requestExport.isPending || scheduleExport.isPending
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -55,10 +77,10 @@ export function ScheduleExportModal({
             Export Report
           </DialogTitle>
           <DialogDescription>
-            Generate a PDF or CSV export for the selected date range and filters.
+            Generate a PDF or CSV export. Choose on-demand or schedule recurring exports.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-6 py-4">
           <div>
             <Label>Format</Label>
             <div className="flex gap-4 mt-2">
@@ -84,19 +106,42 @@ export function ScheduleExportModal({
               </label>
             </div>
           </div>
+          <div>
+            <Label className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Schedule
+            </Label>
+            <div className="flex flex-wrap gap-3 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="schedule" checked={schedule === 'once'} onChange={() => setSchedule('once')} className="rounded-full" />
+                On-demand
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="schedule" checked={schedule === 'daily'} onChange={() => setSchedule('daily')} className="rounded-full" />
+                Daily
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="schedule" checked={schedule === 'weekly'} onChange={() => setSchedule('weekly')} className="rounded-full" />
+                Weekly
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="schedule" checked={schedule === 'monthly'} onChange={() => setSchedule('monthly')} className="rounded-full" />
+                Monthly
+              </label>
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleExport}
-            disabled={requestExport.isPending}
-          >
-            {requestExport.isPending ? (
+          <Button onClick={handleExport} disabled={isPending}>
+            {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+            ) : schedule === 'once' ? (
               `Export ${type.toUpperCase()}`
+            ) : (
+              `Schedule ${schedule}`
             )}
           </Button>
         </DialogFooter>

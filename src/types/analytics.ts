@@ -88,3 +88,11 @@ export interface ErrorRateBreakdown {
   count: number
   percent: number
 }
+
+export interface SLAComplianceByCustomer {
+  customerId: string
+  customerName: string
+  compliance: number
+  total: number
+  onTime: number
+}
