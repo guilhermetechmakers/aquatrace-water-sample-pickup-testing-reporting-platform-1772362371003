@@ -17,6 +17,7 @@ import {
   Archive,
   XCircle,
   X,
+  Paperclip,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -45,6 +46,7 @@ import {
   getNextState,
   type WorkflowAction,
 } from '@/lib/sample-workflow'
+import { FileAttachmentUploader, AttachmentListView } from '@/components/attachments'
 import type { AuditTrailEntry, StatusHistoryEntry } from '@/types/pickup-sample'
 
 function getStatusBadgeVariant(status: string): 'success' | 'rejected' | 'accent' | 'pending' {
@@ -414,6 +416,42 @@ export function SampleDetailsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Paperclip className="h-5 w-5" />
+            Attachments
+          </CardTitle>
+          <CardDescription>
+            Photos, PDFs, CSV exports, instrument raw files. Securely stored with virus scanning.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <FileAttachmentUploader
+            relatedEntityType="pickup"
+            relatedEntityId={pickup.serverId ?? pickup.id}
+            allowedTypes={[
+              'image/jpeg',
+              'image/png',
+              'image/webp',
+              'image/gif',
+              'application/pdf',
+              'text/csv',
+              'application/vnd.ms-excel',
+              'text/plain',
+              'application/octet-stream',
+            ]}
+            maxSize={10 * 1024 * 1024}
+          />
+          <AttachmentListView
+            relatedEntityType="pickup"
+            relatedEntityId={pickup.serverId ?? pickup.id}
+            showDelete
+            emptyMessage="No attachments. Drop files above to add."
+          />
+        </CardContent>
+      </Card>
 
       <Dialog open={Boolean(lightboxPhoto)} onOpenChange={(o) => !o && setLightboxPhoto(null)}>
         <DialogContent className="max-w-4xl p-0 overflow-hidden">

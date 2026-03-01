@@ -19,6 +19,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     invoicing: [],
     analytics: [],
     search: ['read'],
+    attachments: ['read', 'create', 'delete'],
   },
   LAB_TECH: {
     pickup: ['read'],
@@ -36,6 +37,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     invoicing: [],
     analytics: [],
     search: ['read'],
+    attachments: ['read', 'create', 'delete'],
   },
   LAB_MANAGER: {
     pickup: ['read'],
@@ -53,6 +55,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     invoicing: ['read'],
     analytics: ['read'],
     search: ['read'],
+    attachments: ['read', 'create', 'update', 'delete'],
   },
   ADMIN: {
     pickup: ['read', 'create', 'update', 'delete'],
@@ -70,6 +73,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     invoicing: ['read', 'create', 'update'],
     analytics: ['read'],
     search: ['read'],
+    attachments: ['read', 'create', 'update', 'delete', 'execute'],
   },
   CUSTOMER_VIEW: {
     pickup: [],
@@ -87,6 +91,7 @@ const ROLE_PERMISSIONS: Record<AuthRole, Record<Resource, PermissionAction[]>> =
     invoicing: [],
     analytics: [],
     search: [],
+    attachments: ['read'],
   },
 }
 

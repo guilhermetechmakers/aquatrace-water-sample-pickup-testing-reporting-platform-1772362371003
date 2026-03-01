@@ -326,204 +326,312 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-# Search & Filter Functionality
+# File Upload & Secure Storage
 
 ## Overview
-Build a high-performance, authorization-aware search and filtering system that spans samples, reports, customers, and invoices. The system should support indexed search, faceted filtering (date, customer, site, status), autocomplete suggestions, and saved searches. It must power multiple connected pages, including Technician Sample List (page_007), plus pages 009, 013, 017, and 019. The feature should scale to large datasets, guard against null/undefined values at runtime, and enforce role-based access across all queries and results.
+Build a robust, secure file upload and storage subsystem to support attachments across AquaTrace: photos, CSV exports, instrument raw files, PDFs. Implement direct-to-S3 uploads via signed URLs, server-side validation, integrated virus scanning, strict access controls, lifecycle policies (archive/expire), and data integrity verification (checksums). This subsystem should be reusable by all project pages and support expiring download URLs, audit logging, and role-based permissions. It must seamlessly integrate with the Sample Pickup Form (Technician) workflows and downstream lab/management processes.
+
+---
 
 ## Components to Build
-1) Indexed Search Engine Layer
-- Implement a search index (Elasticsearch or Postgres full-text) with schemas for:
-  - Samples (pickup metadata, technician_id, site, date, status)
-  - Reports (lab results, SPC, Total Coliform, statuses, approvals)
-  - Customers (customer info, billing, addresses)
-  - Invoices (line items, totals, statuses, due dates)
-- Support synonyms, stemming, and autocomplete.
-- Expose a unified search service API that accepts query, facets, pagination, and sorting.
 
-2) Frontend Search & Filter UI (Shared)
-- Global Search Bar with autocomplete suggestions.
-- Faceted Filters panel with:
-  - Date range (startDate, endDate)
-  - Customer (multi-select or typeahead)
-  - Site/Location (multi-select or typeahead)
-  - Status (for each entity: samples, reports, invoices)
-  - Type of entity (samples, reports, customers, invoices)
-- Saved Searches management (save, load, delete with user-scoped access)
-- Debounced search input and keyboard navigation for suggestions
-- Result cards / list views with quick actions (view, filter-by, export)
+1) File Attachment Service (Backend)
+- Purpose: Orchestrate file uploads, virus scanning, storage, and lifecycle rules.
+- Features:
+  - Generate signed URLs for direct-to-S3 uploads (PUT or POST with fields)
+  - Server-side validation for uploads (size limits, mime types, duplicates)
+  - Virus scanning integration (ClamAV or API-based)
+  - After-upload processing: store metadata (filename, size, mimeType, checksum, s3Key, attachmentType, relatedEntityId, ownerUserId, permissions, expiration)
+  - Access control: generate secure, expiring download URLs with per-attachment ACL
+  - Storage lifecycle: move/archive to cold storage after N days; expire/delete after M days if configured
+  - Integrity: calculate checksum (SHA-256) on upload and verify on retrieval
+  - Audit logging: record upload, scan results, access, and deletion events
+  - Resilience: idempotent operations, retry policies, and idempotent signed URL creation
+- Data persistence: attachments table(s) with relations to entities (e.g., pickup records, lab results), and a separate audit log.
 
-3) Technician Sample List Page (page_007)
-- List view of all pickups by the technician
-- Show per-row status: Pending, Submitted, Synced, Rejected
-- Inline actions: view details, mark as submitted, filter-by
-- Persist and apply user-selected filters and search terms
-- Map integration (optional) to show geolocation of pickups
-- Mobile-friendly responsive layout with accessible controls
+2) Virus Scanning & Security Orchestration
+- Purpose: Ensure any uploaded file is safe before or after storage.
+- Features:
+  - Optional pre-scan using ClamAV daemon or containerized scanner; optional external antivirus service
+  - Configurable modes: scan on upload, scan on download, or scheduled batch scans
+  - Handling of flagged files: quarantine, block access, notify admins, record reason
+  - Large file handling strategies (streaming scan, chunked scanning)
 
-4) Backend Services
-- API Endpoints for search, facets, and saved searches
-- Robust authorization checks per endpoint (role-based)
-- Data fetch wrappers that guard against nulls and non-arrays
-- Batch/pagination support with cursor-based or offset-based pagination
-- Data validation and normalization layer for API inputs
-- Sync jobs to keep search index up-to-date with DB mutations
+3) Secure Storage & Access Control
+- Purpose: Store files securely with per-attachment access controls and expiring links.
+- Features:
+  - S3 bucket strategy with:
+    - Server-side encryption (SSE-S3 or SSE-KMS)
+    - Object tagging for lifecycle rules (keep/archive)
+    - Bucket policies to restrict access by signed URLs
+  - Attachment-based access control: verify owner/relatedEntity privileges before generating access tokens
+  - Expiring download URLs: short-lived (e.g., 15–60 minutes) signed URLs with nonce/claims
+  - Lifecycle rules: transition to Glacier/Deep Archive after defined days; automatic deletion after retention period
+  - Metadata indexing for quick search by relatedEntityId, type, date
 
-5) Data Access & Models
-- Prisma/ORM or direct SQL layer with strict typing
-- Models: Sample, Report, Customer, Invoice, User, SavedSearch
-- Ensure all list results are guarded with data ?? [] and Array.isArray checks
+4) Attachment API & Data Models
+- Purpose: Expose endpoints for frontend to request uploads, generate signed URLs, and fetch metadata.
+- Components:
+  - Endpoints to request a signed URL for upload (POST)
+  - Endpoints to confirm/upload metadata post-upload or to poll for scan results
+  - Endpoint to generate a secure download URL for an attachment
+  - Endpoint to list attachments for a given entity with pagination and safe defaults
+  - Validation: ensure relatedEntityId exists, user has permission, attachment type allowed
+- Data models:
+  - attachments: id, s3Key, fileName, mimeType, size, checksum, uploadedAt, uploadedByUserId, relatedEntityType, relatedEntityId, accessControl (roles), expirationDate, scanStatus, scanResult, isArchived, isDeleted
+  - attachment_permissions: attachmentId, userId/role, accessLevel
+  - attachment_audit: id, attachmentId, action, performedBy, timestamp, details
+- Validation rules: use Array.isArray checks; guard all array access; default to empty arrays where needed
 
-6) Integration & Orchestration
-- Hook frontend search component to backend search API
-- Apply frontend filters to backend queries with consistent parameter contracts
-- Implement authorization-aware filtering (only return entities user is permitted to see)
-- Ensure runtime safety across all data paths (null/undefined guards, default states)
+5) Sample Pickup Form (Technician) Integration
+- Purpose: Allow technicians to attach photos and notes per 100 mL vial pickup within the form.
+- Features:
+  - Attachments field supporting multiple files per pickup entry
+  - Live progress for direct-to-S3 upload via signed URLs
+  - Capture of additional data: GPS coordinates, timestamp, pH, chlorine, customer/site notes
+  - Validate attachments before submission; store attachment metadata tied to the pickup record
+  - UI hints for supported file types and size limits
+  - Ensure null-safe rendering of attachment lists (guard with (attachments ?? []).map(...) or Array.isArray checks)
+
+6) Admin & Lab Workflow Integration
+- Purpose: Ensure downstream users can access, approve, and distribute results with attached files.
+- Features:
+  - Sanity checks: verify only authorized roles can fetch or download attachments
+  - Generate and store PDFs that aggregate results and attachment references
+  - Provide expiring, secure download links to customers
+  - Logging of approvals and distribution actions with timestamps
+
+---
 
 ## Implementation Requirements
 
 ### Frontend
-- Tech stack: React (with TypeScript), Next.js or equivalent SPA framework
-- State management: useState/useEffect for arrays with explicit defaults, useReducer as needed
-- Hooks usage: useMemo for derived filters, useCallback for handlers
-- Components:
-  - SearchBar with autocomplete suggestions (debounced input, suggestion fetch, keyboard navigation)
-  - FacetedFilterPanel with date picker, multi-select/typeahead components, and clear-all
-  - ResultGrid / ResultList adaptable to Samples, Reports, Customers, Invoices
-  - TechnicianSampleList page: list of pickups with status badges, search, and filters
-  - SavedSearchManager modal/panel
+
+- Tech stack: React (with hooks), Next.js or equivalent SPA framework
+- Components/pages:
+  - FileAttachmentUploader (reusable)
+    - Props: relatedEntityType, relatedEntityId, allowedTypes, maxSize, onUploadComplete
+    - Behavior:
+      - Request signed URL from backend for each file
+      - Upload via direct-to-S3 with form data, streaming as needed
+      - Show real-time progress, retry on failure
+      - After successful upload, persist metadata via API (attachment record) and associate to related entity
+      - Trigger virus scan status check (poll or webhook)
+      - Display list of attachments with safe, expiring download links
+  - TechnicianSamplePickupForm
+    - Fields: pickupId, technicianId, timestamp, GPS, pH, chlorine, notes
+    - Attachments: drag-and-drop area allowing multiple files
+    - Validation: required fields, numeric ranges, GPS validity
+    - Submission: create pickup record and attach files; upload status per attachment
+  - AttachmentListView
+    - Show attachments for a given pickup or lab record, with thumbnail previews for images, file type icons, size, date
+    - Actions: view (via expiring signed URL), download, delete (with permissions), retry
+  - AccessControlGuard
+    - Ensure UI only shows options available to the current user role (Technician, Lab Tech, Lab Manager, Admin, Customer View)
 - Data handling:
-  - Always use data ?? [] when mapping or filtering results from API
-  - Validate API responses: const list = Array.isArray(response?.data) ? response.data : []
-  - Guard against nullish values before array methods: (items ?? []).map(...), Array.isArray(items) ? items.filter(...) : []
-- Accessibility: aria-labels, keyboard navigable, focus management
-- Performance:
-  - Debounce search inputs
-  - Infinite/offset pagination with fetch-on-scroll where appropriate
-  - Prefetch popular saved searches
-- Localization: support i18n for date formats and labels if required
+  - Use useState<Type[]>([]) for album/list arrays
+  - Always guard against null results: (data ?? []) or Array.isArray(data) ? data.map(...) : []
+  - Validate API responses with safe defaults: const list = Array.isArray(response?.data) ? response.data : []
+  - Use optional chaining when indexing nested response objects
+- UI/UX:
+  - Consistent styling with existing AquaTrace components
+  - Progress indicators for uploads
+  - Clear error messages and retry options
+  - Mobile-friendly design for technicians on-site with GPS access prompts
 
 ### Backend
-- Tech stack: Node.js/Express or NestJS, Postgres (with optional Elasticsearch)
+
+- Tech stack: Node.js (NestJS/Express) withPostgreSQL (or your existing DB) and integration with Supabase-like patterns
 - Endpoints:
-  - GET /api/search?query=&type=&filters=&page=&limit=&sort=  (generic search)
-  - POST /api/search/autocomplete  (returns top suggestions)
-  - GET /api/saved-searches  (list)
-  - POST /api/saved-searches  (create)
-  - PUT /api/saved-searches/{id}  (update)
-  - DELETE /api/saved-searches/{id}  (delete)
-  - GET /api/technician/samples  (page_007 specific, with query/filters)
-- Data access:
-  - Use null-safe results: wrap DB results to data ?? [] before mapping
-  - Validate inputs with strict schemas
-  - Role-based filtering in every query (technician, lab tech, lab manager, admin)
-- Search index:
-  - If using Elasticsearch:
-    - Index mappings for samples, reports, customers, invoices
-    - Ingest pipelines for normalization
-  - If using Postgres full-text:
-    - Create tsvector columns and GIN indexes
-- Performance:
-  - Implement faceted counting queries (count distinct by facet)
-  - Cached results for saved searches and popularity (TTL-based)
-  - Rate limiting and pagination guarantees
+  - POST /api/attachments/signed-url
+    - Body: { relatedEntityType, relatedEntityId, fileName, mimeType, fileSize, attachmentType }
+    - Response: { signedUrl, fields, attachmentId, expiresAt }
+  - POST /api/attachments/confirm
+    - Body: { attachmentId, checksum }
+    - Side effects: start/confirm virus scan, persist metadata
+  - GET /api/attachments/:id/download-url
+    - Response: { downloadUrl, expiresAt }
+  - GET /api/attachments?relatedEntityType=...&relatedEntityId=...&limit=...&offset=...
+  - POST /api/attachments/:id/approve-or-delete (for admin/lab manager workflows)
+- Database schemas:
+  - attachments
+    - id UUID PK
+    - s3Key text
+    - fileName text
+    - mimeType text
+    - size bigint
+    - checksum text
+    - uploadedAt timestamptz
+    - uploadedByUserId UUID (FK to users)
+    - relatedEntityType text
+    - relatedEntityId UUID
+    - accessControl jsonb (roles allowed, explicit user IDs)
+    - expirationDate timestamptz
+    - scanStatus text (pending, scanning, clean, infected, failed)
+    - scanResult jsonb
+    - isArchived boolean
+    - isDeleted boolean
+  - attachment_audit
+    - id UUID PK
+    - attachmentId UUID FK
+    - action text
+    - performedBy UUID
+    - timestamp timestamptz
+    - details jsonb
+  - permissions table or embedded in attachments as needed
+- Virus scanning:
+  - If using ClamAV:
+    - Background worker or on-upload worker to run clamd over uploaded file
+    - Update scanStatus and scanResult accordingly
+  - If using external service:
+    - Endpoint to submit file hash or stream; receive result
+- S3 & security:
+  - Create per-attachment pre-signed download URLs with limited validity
+  - SSE-KMS or SSE-S3 enabled
+  - Lifecycle: set lifecycle policy on bucket to transition to archive and eventually expire
+  - Access logs for downloads for auditing
+- Validation:
+  - Enforce max file size per attachment and per upload batch
+  - Enforce allowed MIME types per attachmentType
+  - Validate relatedEntity existence and user permissions
+- Validation frameworks:
+  - Use schema validation for request bodies (Zod/Joi) and DB constraints
+- Error handling:
+  - Return actionable errors with codes and user-friendly messages
+- Tests:
+  - Unit tests for data validation, URL generation, and manifest integrity
+  - Integration tests for upload flow, scan status transitions, and URL expiry
 
 ### Integration
-- API contracts:
-  - Consistent response shapes: { data: T[], total: number, facets: FacetMap, page: number, limit: number }
-  - Safe access patterns: const items = Array.isArray(response?.data) ? response.data : []
-- Frontend-Backend alignment:
-  - Ensure frontend passes type parameter to filter by entity type
-  - Ensure saved searches store and retrieve serialized filter objects
-- Security:
-  - JWT/OAuth checks per request
-  - Scope-based filters: technicians see only their pickups; admins see all; lab roles see their domain
-  - Audit logging for search queries (optional)
-- Error handling:
-  - Normalize errors to user-friendly messages
-  - Retry logic for transient DB/index issues
 
-## User Experience Flow
-1) User opens the app and navigates to Technician Sample List (page_007)
-2) UI loads technician-specific pickups with status column
-3) User uses search bar to search by sample ID, site, customer, or notes
-4) User applies facets: date range, site, customer, and status to refine results
-5) Results update in real-time as filters are applied; each row shows status badge and actions
-6) User saves a commonly used filter as a Saved Search (optional)
-7) User continues to other pages (page_009, 013, 017, 019) using the global search to locate samples, reports, customers, or invoices
-8) Autocomplete suggestions appear as the user types; selecting a suggestion narrows results
-9) Admin or Lab Manager reviews and approves results, generates PDFs, and distributes to customers
-
-## Technical Specifications
-
-- Data Models
-  - Sample: id, technician_id, site_id, pickup_date, pH, chlorine, status (Pending, Submitted, Synced, Rejected), created_at, updated_at
-  - Report: id, sample_id, SPC, TotalColiform, status, approved_by, approved_at, created_at
-  - Customer: id, name, billing_address, contact_email, contact_phone, account_status
-  - Invoice: id, customer_id, date, due_date, total_amount, status
-  - User: id, role (Technician, LabTech, LabManager, Admin, Viewer), assigned_sites
-  - SavedSearch: id, user_id, name, filters, query, type, created_at
-- API Endpoints
-  - GET /api/search
-  - POST /api/search/autocomplete
-  - GET /api/saved-searches
-  - POST /api/saved-searches
-  - PUT /api/saved-searches/{id}
-  - DELETE /api/saved-searches/{id}
-  - GET /api/technician/samples (page_007)
-  - GET /api/ pacientes (if needed for cross-view)
-- Security
-  - JWT-based authentication
-  - Role-based access control (RBAC) with permissions per endpoint and data scope
-  - Enforce data-level filters so technicians only access their pickups; others see their domain
-- Validation
-  - Validate query params: page, limit, sort, type, date ranges
-  - Validate filter values against allowed enums and reference data
-  - Ensure arrays are normalized: const filters = Array.isArray(input?.filters) ? input.filters : []
-- Runtime Safety
-  - Supabase-like patterns: data ?? []
-  - Guard array ops: (list ?? []).map(...), Array.isArray(list) ? list.filter(...) : []
-  - React state defaults: useState<YourType[]>([])
-  - Optional chaining for nested API data: item?.nested?.field
-  - Destructuring with defaults: const { items = [], total = 0 } = resp ?? {}
-- Performance
-  - Debounced search input (e.g., 250ms)
-  - Facet counts computed efficiently
-  - Use pagination or cursor-based paging for large datasets
-  - Enable server-side filtering to minimize payload
-
-## Acceptance Criteria
-- [ ] Search across samples, reports, customers, and invoices returns correct results with relevant facets
-- [ ] Technician Sample List (page_007) shows all pickups for the technician with accurate statuses and functional filters/search
-- [ ] Autocomplete suggestions are relevant and fast, with at least 5 suggestions
-- [ ] Saved searches can be created, loaded, updated, and deleted, and apply instantly
-- [ ] All API responses are validated and guarded against null/undefined values
-- [ ] All array operations are guarded against non-arrays and null values
-- [ ] RBAC ensures technicians can only access their own pickups and admins can access all data
-- [ ] UI conforms to existing design system and is accessible
-
-## UI/UX Guidelines
-- Align with AquaTrace design language for typography, color, spacing
-- Clear visual cues for facets and active filters
-- Responsive layout with a mobile-optimized Technician Sample List
-- Consistent loading states and empty-state illustrations
-- Consistent error messages and retry options
-
-## Mandatory Coding Standards — Runtime Safety
-
-CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
-
-1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null (not []) when there are no rows.
-2. Array methods: Never call on a value that could be null, undefined, or a non-array. Always guard:
-   - (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : []
-3. React useState for arrays/objects: Always initialize with the correct type — useState<Type[]>([]) for arrays.
-4. API response shapes: Always validate — const list = Array.isArray(response?.data) ? response.data : []
-5. Optional chaining: Use obj?.property?.nested when accessing nested objects from API responses or database queries.
-6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
+- Identity & Access:
+  - Align with existing Auth system (5 roles: Technician, Lab Tech, Lab Manager, Admin, Customer View)
+  - Enforce role-based access to endpoints and UI
+- Data flow:
+  - Technician creates pickup, attaches files
+  - Files uploaded via signed URLs; after upload, backend registers attachment and triggers virus scan
+  - Lab tech accesses attachments associated with lab orders, PDFs generated with embedded attachments
+  - Lab manager approves results and triggers distribution via secure URLs to customers
+- Consistency:
+  - All API responses follow a stable shape; consistently handle nulls and missing fields
+- Observability:
+  - Centralized logging for uploads, scans, downloads, and deletions
+  - Metrics on upload throughput, scan times, and failed scans
 
 ---
 
-If you want, I can convert this into a concrete starter repository structure (folders, file templates, and example code snippets) to accelerate kickoff.
+## User Experience Flow
+
+1) Technician opens Sample Pickup Form on mobile
+2) Technician fills required fields: pickupId, timestamp (auto-timestamped), GPS (captured via device), pH, chlorine, customer/site notes
+3) Technician adds attachments:
+   - Selects photos, PDFs, CSV exports, instrument raw files
+   - Each file is uploaded directly to S3 via a signed URL
+   - Progress bars display per-file upload state
+   - After upload, backend validates and queues for virus scanning
+4) Upon completing pickup form, technician submits:
+   - Pickup record stored with reference to attachments
+   - Attachments show in a live list with status (Uploaded, Scanning, Clean, Infected)
+5) Lab Tech retrieves pickup record and any attachments
+   - Downloads or previews attachments via expiring signed URLs
+6) Lab runs SPC and Total Coliform tests; results are appended to the related record
+7) Lab Manager reviews results, approves, and triggers generation of a comprehensive PDF report including attachments
+8) Admin distributes report to customer via expiring secure download URL
+9) Attachments follow lifecycle rules: archived after N days, expired and purged after retention period
+10) All actions are auditable; admins receive notifications on AV scans failures or access anomalies
+
+---
+
+## Technical Specifications
+
+Data Models
+- attachments
+  - id: UUID PK
+  - s3Key: string
+  - fileName: string
+  - mimeType: string
+  - size: number
+  - checksum: string
+  - uploadedAt: timestamp
+  - uploadedByUserId: UUID
+  - relatedEntityType: string
+  - relatedEntityId: UUID
+  - accessControl: JSON
+  - expirationDate: timestamp
+  - scanStatus: string
+  - scanResult: JSON
+  - isArchived: boolean
+  - isDeleted: boolean
+- attachment_audit
+  - id: UUID PK
+  - attachmentId: UUID FK
+  - action: string
+  - performedBy: UUID
+  - timestamp: timestamp
+  - details: JSON
+
+API Endpoints
+- POST /api/attachments/signed-url
+  - Input: { relatedEntityType, relatedEntityId, fileName, mimeType, fileSize, attachmentType }
+  - Output: { attachmentId, signedUrl, fields?, expiresAt }
+- POST /api/attachments/confirm
+  - Input: { attachmentId, checksum }
+  - Action: initiate/confirm virus scan; validate integrity
+- GET /api/attachments/:id/download-url
+  - Output: { downloadUrl, expiresAt }
+- GET /api/attachments?relatedEntityType=&relatedEntityId=&limit=&offset=
+  - Output: { attachments: [ ... ] }
+- POST /api/attachments/:id/permissions
+  - Input: { userId, accessLevel } or role-based
+- POST /api/attachments/:id/archive
+  - Trigger lifecycle transition
+- Webhooks/Events:
+  - On scan complete: emit event to notify front-end or perform automated workflows
+
+Security
+- Authentication: OAuth2 / JWT with role claims
+- Authorization: RBAC enforcement per endpoint
+- Signed URLs: short-lived (e.g., 15-60 minutes); scoped to attachmentId
+- Input Validation: strict checks on relatedEntity existence and permissions
+- Data at rest: S3 SSE-KMS; encryption keys rotated per policy
+- Data in transit: HTTPS only
+
+Validation
+- Frontend: required fields, numeric validation for pH and chlorine, GPS presence, file size/type checks
+- Backend: validate related entities exist; verify user permissions; ensure file types and sizes are within configured limits
+- API responses: shapes validated; safe defaults for empty arrays
+
+Acceptance Criteria
+- [ ] Direct-to-S3 uploads succeed with signed URLs and progress indicators in the UI
+- [ ] Virus scanning is triggered after upload and results reflect in attachment metadata
+- [ ] Secure, expiring download URLs are generated and work only within expiry window
+- [ ] Attachments are linked to their related entities and appear in attachment lists with correct metadata
+- [ ] Lifecycle rules archive/expire attachments automatically according to policy
+- [ ] All API responses and UI rendering guard against null/undefined and use safe defaults
+- [ ] Proper audit logs are created for uploads, scans, accesses, and deletions
+- [ ] Role-based access prevents unauthorized actions across Technician, Lab Tech, Lab Manager, Admin, Customer View
+
+UI/UX Guidelines
+- Use consistent styling with AquaTrace app; components should be responsive and accessible
+- Provide loading, success, and error states; display non-intrusive toasts for actions
+- Show per-attachment status badges (Uploaded, Scanning, Clean, Infected, Archived)
+- Provide clear indicators for signed URL expiry and retry options
+
+Mandatory Coding Standards — Runtime Safety
+
+CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
+
+1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null when there are no rows.
+2. Array methods: Never call on a value that could be null/undefined. Guard:
+   - (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : []
+3. React useState for arrays/objects: Initialize with proper type — useState<Type[]>([]) for arrays.
+4. API response shapes: Validate — const list = Array.isArray(response?.data) ? response.data : [].
+5. Optional chaining: Use obj?.property?.nested when accessing nested API/db results.
+6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}.
+
+---
+
+If you want, I can convert this into a concrete AI tool prompt (JSON/YAML) with explicit field names, examples, and test cases for an autonomous code generation system.
 
 ## Implementation Notes
 

@@ -1,162 +1,221 @@
+/**
+ * Pickups API - Create draft pickups, fetch pickups for approvals, CRUD operations
+ */
+
 import { supabase } from '@/lib/supabase'
 import type { Pickup } from '@/types/rbac'
-
-export type CreatePickupInput = Omit<Pickup, 'id' | 'created_at' | 'updated_at'>
-export type UpdatePickupInput = Partial<Pickup>
 
 const isSupabaseConfigured = () =>
   Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
 
-const mockPhotosStore: Record<string, string[]> = {}
+/** Input for creating a pickup */
+export interface CreatePickupInput {
+  technician_id: string
+  location?: string
+  gps_lat?: number | null
+  gps_lng?: number | null
+  readings?: Record<string, unknown>
+  photos?: string[]
+  status?: string
+}
 
-const MOCK_PICKUPS: Pickup[] = [
-  {
-    id: 'p1',
-    technician_id: 'demo-user',
-    customer_id: null,
-    location: 'Building A',
-    gps_lat: 37.7749,
-    gps_lng: -122.4194,
-    readings: { pH: 7.2, chlorine: 1.5 },
-    photos: [],
-    status: 'scheduled',
-    scheduled_at: new Date().toISOString(),
-    completed_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'p2',
-    technician_id: 'demo-user',
-    customer_id: null,
-    location: 'Building B',
-    gps_lat: null,
-    gps_lng: null,
-    readings: {},
-    photos: [],
-    status: 'in_progress',
-    scheduled_at: new Date().toISOString(),
-    completed_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-]
+/** Input for updating a pickup */
+export interface UpdatePickupInput {
+  location?: string
+  gps_lat?: number | null
+  gps_lng?: number | null
+  readings?: Record<string, unknown>
+  photos?: string[]
+  status?: string
+}
 
+const PICKUP_STATUSES: Pickup['status'][] = ['scheduled', 'in_progress', 'completed']
+
+function rowToPickup(r: Record<string, unknown>): Pickup {
+  const rawStatus = (r.status as string) ?? 'scheduled'
+  const status = PICKUP_STATUSES.includes(rawStatus as Pickup['status'])
+    ? (rawStatus as Pickup['status'])
+    : 'scheduled'
+  return {
+    id: String(r.id ?? ''),
+    technician_id: String(r.technician_id ?? ''),
+    customer_id: (r.customer_id as string) ?? null,
+    location: String(r.location ?? ''),
+    gps_lat: (r.gps_lat as number) ?? null,
+    gps_lng: (r.gps_lng as number) ?? null,
+    readings: (r.readings as Record<string, unknown>) ?? {},
+    photos: Array.isArray(r.photos) ? (r.photos as string[]) : [],
+    status,
+    scheduled_at: (r.scheduled_at as string) ?? null,
+    completed_at: (r.completed_at as string) ?? null,
+    created_at: String(r.created_at ?? ''),
+    updated_at: String(r.updated_at ?? ''),
+  }
+}
+
+/** Fetch all pickups (optionally filtered by technician) */
 export async function fetchPickups(technicianId?: string): Promise<Pickup[]> {
-  if (!isSupabaseConfigured()) {
-    const list = technicianId
-      ? MOCK_PICKUPS.filter((p) => p.technician_id === technicianId)
-      : MOCK_PICKUPS
-    return list.map((p) => {
-      const extra = mockPhotosStore[p.id]
-      return extra?.length ? { ...p, photos: [...(p.photos ?? []), ...extra] } : p
-    })
+  if (!isSupabaseConfigured()) return []
+
+  let query = supabase.from('pickups').select('*').order('updated_at', { ascending: false })
+  if (technicianId) {
+    query = query.eq('technician_id', technicianId)
   }
-  let q = supabase.from('pickups').select('*').order('created_at', { ascending: false })
-  if (technicianId) q = q.eq('technician_id', technicianId)
-  const { data } = await q
-  return (data ?? []) as Pickup[]
+  const { data, error } = await query
+  if (error) throw error
+  const rows = (data ?? []) as Record<string, unknown>[]
+  return rows.map(rowToPickup)
 }
 
+/** Fetch a single pickup by ID */
 export async function fetchPickup(id: string): Promise<Pickup | null> {
-  if (!isSupabaseConfigured()) {
-    return MOCK_PICKUPS.find((p) => p.id === id) ?? null
-  }
+  if (!isSupabaseConfigured()) return null
+
   const { data, error } = await supabase.from('pickups').select('*').eq('id', id).single()
-  if (error) return null
-  return data as Pickup
+  if (error || !data) return null
+  return rowToPickup(data as Record<string, unknown>)
 }
 
-export async function createPickup(pickup: CreatePickupInput, technicianId?: string): Promise<Pickup> {
-  const now = new Date().toISOString()
-  const full: Omit<Pickup, 'id'> = {
-    ...pickup,
-    technician_id: pickup.technician_id ?? technicianId ?? '',
-    created_at: now,
-    updated_at: now,
-  }
-  if (!isSupabaseConfigured()) {
-    return { ...full, id: `mock-${Date.now()}` } as Pickup
-  }
-  const { data, error } = await supabase.from('pickups').insert(full).select().single()
-  if (error) throw new Error(error.message)
-  return data as Pickup
-}
+/** Create a pickup */
+export async function createPickup(input: CreatePickupInput, _technicianId?: string): Promise<Pickup> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured')
 
-export async function updatePickup(
-  id: string,
-  updates: Partial<Pickup>
-): Promise<Pickup> {
-  if (!isSupabaseConfigured()) {
-    return { ...MOCK_PICKUPS[0], ...updates, id }
-  }
   const { data, error } = await supabase
     .from('pickups')
-    .update(updates)
-    .eq('id', id)
-    .select()
+    .insert({
+      technician_id: input.technician_id,
+      location: input.location ?? 'Draft',
+      gps_lat: input.gps_lat ?? null,
+      gps_lng: input.gps_lng ?? null,
+      readings: input.readings ?? {},
+      photos: input.photos ?? [],
+      status: input.status ?? 'scheduled',
+    })
+    .select('*')
     .single()
-  if (error) throw new Error(error.message)
-  return data as Pickup
+
+  if (error) throw error
+  return rowToPickup(data as Record<string, unknown>)
 }
 
+/** Update a pickup */
+export async function updatePickup(id: string, input: UpdatePickupInput): Promise<Pickup> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured')
+
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (input.location != null) payload.location = input.location
+  if (input.gps_lat != null) payload.gps_lat = input.gps_lat
+  if (input.gps_lng != null) payload.gps_lng = input.gps_lng
+  if (input.readings != null) payload.readings = input.readings
+  if (input.photos != null) payload.photos = input.photos
+  if (input.status != null) payload.status = input.status
+
+  const { data, error } = await supabase.from('pickups').update(payload).eq('id', id).select('*').single()
+  if (error) throw error
+  return rowToPickup(data as Record<string, unknown>)
+}
+
+/** Add readings to a pickup (merge with existing) */
 export async function addPickupReadings(
   pickupId: string,
-  readings: { pH?: number; chlorine?: number }
-): Promise<void> {
-  if (!isSupabaseConfigured()) return
-  const { data } = await supabase.from('pickups').select('readings').eq('id', pickupId).single()
-  const existing = (data?.readings as Record<string, number>) ?? {}
-  await supabase
-    .from('pickups')
-    .update({ readings: { ...existing, ...readings } })
-    .eq('id', pickupId)
+  readings: Record<string, unknown>
+): Promise<Pickup> {
+  const pickup = await fetchPickup(pickupId)
+  if (!pickup) throw new Error('Pickup not found')
+  const merged = { ...pickup.readings, ...readings }
+  return updatePickup(pickupId, { readings: merged })
 }
 
-export async function addPickupPhoto(pickupId: string, photoUrl: string): Promise<void> {
-  if (!isSupabaseConfigured()) return
-  const { data } = await supabase.from('pickups').select('photos').eq('id', pickupId).single()
-  const photos = Array.isArray(data?.photos) ? data.photos : []
-  await supabase
-    .from('pickups')
-    .update({ photos: [...photos, photoUrl] })
-    .eq('id', pickupId)
+/** Add photo URLs to a pickup */
+export async function addPickupPhotos(pickupId: string, photoUrls: string[]): Promise<Pickup> {
+  const pickup = await fetchPickup(pickupId)
+  if (!pickup) throw new Error('Pickup not found')
+  const photos = [...(pickup.photos ?? []), ...photoUrls]
+  return updatePickup(pickupId, { photos })
 }
 
-export async function addPickupPhotos(pickupId: string, photoUrls: string[]): Promise<void> {
-  if ((photoUrls ?? []).length === 0) return
-  if (!isSupabaseConfigured()) {
-    mockPhotosStore[pickupId] = [...(mockPhotosStore[pickupId] ?? []), ...(photoUrls ?? [])]
-    return
-  }
-  const { data } = await supabase.from('pickups').select('photos').eq('id', pickupId).single()
-  const existing = Array.isArray(data?.photos) ? data.photos : []
-  await supabase
-    .from('pickups')
-    .update({ photos: [...existing, ...(photoUrls ?? [])] })
-    .eq('id', pickupId)
-}
+/** Upload a photo file to pickup-photos storage and return the public URL */
+export async function uploadPickupPhoto(pickupId: string, file: File): Promise<string> {
+  if (!isSupabaseConfigured()) throw new Error('Supabase not configured')
 
-/** Upload photo file to Supabase Storage and return public URL. Uses data URL when Supabase not configured. */
-export async function uploadPickupPhoto(
-  pickupId: string,
-  file: File
-): Promise<string> {
-  if (!isSupabaseConfigured()) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = () => reject(new Error('Failed to read file'))
-      reader.readAsDataURL(file)
-    })
-  }
-  const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `pickups/${pickupId}/${Date.now()}.${ext}`
-  const { error } = await supabase.storage.from('pickup-photos').upload(path, file, {
-    cacheControl: '3600',
-    upsert: false,
-  })
-  if (error) throw new Error(error.message)
+  const ext = file.name.split('.').pop() || 'jpg'
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const path = `pickups/${pickupId}/${uniqueId}.${ext}`
+
+  const { error } = await supabase.storage
+    .from('pickup-photos')
+    .upload(path, file, { cacheControl: '3600', upsert: false })
+
+  if (error) throw error
+
   const { data } = supabase.storage.from('pickup-photos').getPublicUrl(path)
   return data.publicUrl
+}
+
+/** Create a draft pickup in Supabase to get an ID for attachments */
+export async function createDraftPickup(technicianId: string): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null
+
+  const { data, error } = await supabase
+    .from('pickups')
+    .insert({
+      technician_id: technicianId,
+      location: 'Draft',
+      status: 'draft',
+      readings: {},
+      photos: [],
+    })
+    .select('id')
+    .single()
+
+  if (error || !data) return null
+  return (data as { id: string }).id
+}
+
+/** Update a draft pickup with form data */
+export async function updateDraftPickup(
+  pickupId: string,
+  data: {
+    vialId?: string
+    siteId?: string | null
+    vialCount?: number
+    sampleId?: string | null
+    pH?: number | null
+    chlorine?: number | null
+    chlorineReading?: number | null
+    pickupLocationName?: string | null
+    customerSiteNotes?: string | null
+    location?: string
+    gpsLat?: number | null
+    gpsLon?: number | null
+    gpsAccuracy?: number | null
+    status?: string
+  }
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false
+
+  const readings: Record<string, unknown> = {}
+  if (data.pH != null) readings.pH = data.pH
+  if (data.chlorine != null) readings.chlorine = data.chlorine
+  else if (data.chlorineReading != null) readings.chlorine = data.chlorineReading
+
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+  if (data.vialId != null) payload.vial_id = data.vialId
+  if (data.siteId != null) payload.site_id = data.siteId
+  if (data.vialCount != null) payload.vial_count = data.vialCount
+  if (data.sampleId != null) payload.sample_id = data.sampleId
+  if (Object.keys(readings).length > 0) payload.readings = readings
+  if (data.chlorineReading != null) payload.chlorine_reading = data.chlorineReading
+  if (data.pickupLocationName != null) payload.pickup_location_name = data.pickupLocationName
+  if (data.customerSiteNotes != null) payload.customer_site_notes = data.customerSiteNotes
+  if (data.location != null) payload.location = data.location
+  if (data.gpsLat != null) payload.gps_lat = data.gpsLat
+  if (data.gpsLon != null) payload.gps_lng = data.gpsLon
+  if (data.gpsAccuracy != null) payload.gps_accuracy = data.gpsAccuracy
+  if (data.status != null) payload.status = data.status
+
+  const { error } = await supabase.from('pickups').update(payload).eq('id', pickupId)
+  return !error
 }

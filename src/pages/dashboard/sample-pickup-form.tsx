@@ -4,12 +4,12 @@
  * Sample Management Workflow - initial state: Pending Pickup
  */
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Camera, MapPin, ScanBarcode, Loader2, Building2 } from 'lucide-react'
+import { Camera, MapPin, ScanBarcode, Loader2, Building2, Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +19,9 @@ import { useAuth } from '@/contexts/auth-context'
 import { useCreatePickupSample, useAddPickupPhoto } from '@/hooks/usePickupSamples'
 import { useSites } from '@/hooks/useSites'
 import { generateId } from '@/lib/offline-storage'
+import { createDraftPickup, updateDraftPickup } from '@/api/pickups'
 import { BarcodeScanner } from '@/components/technician/barcode-scanner'
+import { FileAttachmentUploader, AttachmentListView } from '@/components/attachments'
 import { cn } from '@/lib/utils'
 
 const schema = z.object({
@@ -86,8 +88,17 @@ export function SamplePickupFormPage() {
   } | null>(null)
   const [isCapturingGps, setIsCapturingGps] = useState(false)
   const [sampleId] = useState(() => generateSampleId())
+  const [draftPickupId, setDraftPickupId] = useState<string | null>(null)
 
   const createMutation = useCreatePickupSample()
+
+  useEffect(() => {
+    const technicianId = user?.id
+    if (!technicianId) return
+    createDraftPickup(technicianId).then((id) => {
+      if (id) setDraftPickupId(id)
+    })
+  }, [user?.id])
   const addPhotoMutation = useAddPickupPhoto()
   const { data: sites = [], isLoading: sitesLoading } = useSites()
 
@@ -177,6 +188,33 @@ export function SamplePickupFormPage() {
     const siteName = selectedSite?.name ?? 'Site'
     const location = data.pickupLocationName?.trim() || siteName
 
+    if (draftPickupId) {
+      const status = action === 'submit' ? 'submitted' : 'draft'
+      const ok = await updateDraftPickup(draftPickupId, {
+        vialId: data.vialId.trim(),
+        siteId: data.siteId.trim() || null,
+        vialCount: data.vialCount ?? 1,
+        sampleId,
+        pH: pHNum,
+        chlorine: chlorineNum,
+        chlorineReading: chlorineNum,
+        pickupLocationName: data.pickupLocationName?.trim() || null,
+        customerSiteNotes: data.customerSiteNotes?.trim() || null,
+        location,
+        gpsLat: gps?.lat ?? null,
+        gpsLon: gps?.lng ?? null,
+        gpsAccuracy: gps?.accuracy ?? null,
+        status,
+      })
+      if (ok) {
+        toast.success(action === 'submit' ? 'Pickup submitted' : 'Draft saved')
+        if (action === 'submit') navigate('/dashboard/pickups')
+      } else {
+        toast.error('Failed to save')
+      }
+      return
+    }
+
     const now = new Date().toISOString()
     createMutation.mutate(
       {
@@ -217,7 +255,9 @@ export function SamplePickupFormPage() {
             }
           }
           toast.success(action === 'submit' ? 'Pickup submitted' : 'Draft saved')
-          navigate('/dashboard/pickups')
+          if (action === 'submit') {
+            navigate('/dashboard/pickups')
+          }
         },
         onError: (err) => {
           toast.error(err instanceof Error ? err.message : 'Failed to save')
@@ -460,6 +500,44 @@ export function SamplePickupFormPage() {
             />
           </CardContent>
         </Card>
+
+        {draftPickupId && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Paperclip className="h-5 w-5" />
+                Attachments
+              </CardTitle>
+              <CardDescription>
+                Add photos, PDFs, CSV exports, or instrument raw files. Files are securely stored and scanned.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <FileAttachmentUploader
+                relatedEntityType="pickup"
+                relatedEntityId={draftPickupId}
+                allowedTypes={[
+                  'image/jpeg',
+                  'image/png',
+                  'image/webp',
+                  'image/gif',
+                  'application/pdf',
+                  'text/csv',
+                  'application/vnd.ms-excel',
+                  'text/plain',
+                  'application/octet-stream',
+                ]}
+                maxSize={10 * 1024 * 1024}
+              />
+              <AttachmentListView
+                relatedEntityType="pickup"
+                relatedEntityId={draftPickupId}
+                showDelete
+                emptyMessage="No attachments yet. Drop files above to add."
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex flex-wrap gap-4">
           <Button
