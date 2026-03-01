@@ -23,6 +23,7 @@ import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
 import { LabManagerDashboardPage } from '@/pages/dashboard/lab-manager-dashboard'
 import { ApprovalDetailsPage } from '@/pages/dashboard/approval-details'
 import { ReportsPage } from '@/pages/dashboard/reports'
+import { DistributionPage } from '@/pages/dashboard/distribution'
 import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
@@ -138,7 +139,14 @@ export const router = createBrowserRouter([
           { path: ':id', element: <ApprovalDetailsPage /> },
         ],
       },
-      { path: 'reports', element: <ReportsPage /> },
+      {
+        path: 'reports',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <ReportsPage /> },
+          { path: 'distribution', element: <DistributionPage /> },
+        ],
+      },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'invoicing', element: <InvoicingPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },

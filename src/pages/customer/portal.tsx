@@ -4,12 +4,29 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useReports } from '@/hooks/useReports'
+import { useAuth } from '@/contexts/auth-context'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
+import { useCustomerReports } from '@/hooks/useReports'
 import type { ReportWithMeta } from '@/api/reports'
 import { format } from 'date-fns'
 
 export function CustomerPortalPage() {
-  const { data: reports = [], isLoading } = useReports()
+  const { user } = useAuth()
+  const { data: customerRow } = useQuery({
+    queryKey: ['customer', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('user_id', user?.id)
+        .maybeSingle()
+      return data as { id: string } | null
+    },
+    enabled: Boolean(user?.id),
+  })
+  const customerId = customerRow?.id ?? null
+  const { data: reports = [], isLoading } = useCustomerReports(customerId)
   const [search, setSearch] = useState('')
 
   const filteredReports = search.trim()
@@ -78,7 +95,7 @@ export function CustomerPortalPage() {
                   <div className="flex items-center gap-4">
                     <FileText className="h-10 w-10 text-primary" />
                     <div>
-                      <p className="font-mono font-medium text-sm">{r.id.slice(0, 12)}...</p>
+                      <p className="font-mono font-medium text-sm">{r.reportId ?? r.id.slice(0, 12)}</p>
                       <p className="text-sm text-muted-foreground">
                         {r.pickup?.location ?? 'Unknown'} · {r.created_at ? format(new Date(r.created_at), 'PP') : '—'}
                       </p>

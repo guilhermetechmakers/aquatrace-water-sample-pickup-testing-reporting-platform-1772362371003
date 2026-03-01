@@ -1,18 +1,17 @@
 /**
- * React Query hooks for PDF Report operations
+ * React Query hooks for PDF Report operations (approval-details integration)
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchReportsList,
   fetchReportsByApproval,
   fetchReportDetails,
-  fetchCustomerReports,
   generateReportPdf,
   sendReportEmail,
   reissueReport,
   getReportPdfSignedUrl,
 } from '@/api/reports'
+import * as reportsPdfApi from '@/api/reports-pdf'
 import type {
   PickupData,
   LabResults,
@@ -22,20 +21,12 @@ import type {
 
 export const reportKeys = {
   all: ['reports'] as const,
-  list: (filters?: { customerId?: string }) => [...reportKeys.all, 'list', filters ?? {}] as const,
   byApproval: (approvalId: string) => [...reportKeys.all, 'approval', approvalId] as const,
   details: (reportId: string, version?: number) =>
     [...reportKeys.all, 'details', reportId, version] as const,
 }
 
-export function useReports(filters?: { customerId?: string; status?: string; limit?: number }) {
-  return useQuery({
-    queryKey: reportKeys.list(filters),
-    queryFn: () => fetchReportsList(filters),
-  })
-}
-
-export function useReportByApproval(approvalId: string | null) {
+export function useReportByApprovalId(approvalId: string | null) {
   return useQuery({
     queryKey: reportKeys.byApproval(approvalId ?? ''),
     queryFn: () => fetchReportsByApproval(approvalId!),
@@ -43,11 +34,45 @@ export function useReportByApproval(approvalId: string | null) {
   })
 }
 
-export function useReportDetails(reportId: string | null, version?: number) {
+export function useReport(reportId: string | null) {
   return useQuery({
-    queryKey: reportKeys.details(reportId ?? '', version),
-    queryFn: () => fetchReportDetails(reportId!, version),
+    queryKey: reportKeys.details(reportId ?? ''),
+    queryFn: () => fetchReportDetails(reportId!, undefined).then((r) => r.report),
     enabled: Boolean(reportId),
+  })
+}
+
+export function useReportVersions(approvalId: string | null) {
+  const { data: report } = useReportByApprovalId(approvalId)
+  const versions = (report?.versions ?? []) as Array<{
+    id: string
+    reportId: string
+    version: number
+    status: 'draft' | 'approved' | 'distributed'
+    pdfStoragePath?: string | null
+    createdAt: string
+  }>
+  return { data: versions }
+}
+
+async function ensureReportForApproval(payload: {
+  approvalId: string
+  customerId: string
+  resultId: string
+  sampleId: string
+}): Promise<{ id: string } | null> {
+  const report = await reportsPdfApi.ensureReportForApproval(
+    payload.approvalId,
+    payload.customerId,
+    payload.resultId,
+    payload.sampleId
+  )
+  return report ? { id: report.id } : null
+}
+
+export function useEnsureReportForApproval() {
+  return useMutation({
+    mutationFn: ensureReportForApproval,
   })
 }
 
@@ -62,6 +87,7 @@ export function useGenerateReportPdf() {
       labResults: LabResults
       attachments?: ReportAttachment[]
       signature?: ReportSignature | null
+      auditTrail?: Array<{ action?: string; performedBy?: string; performedAt?: string; note?: string }>
     }) => generateReportPdf(payload),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: reportKeys.byApproval(variables.approvalId) })
@@ -97,19 +123,12 @@ export function useReissueReport() {
       labResults: LabResults
       attachments?: ReportAttachment[]
       signature?: ReportSignature | null
+      auditTrail?: Array<{ action?: string; performedBy?: string; performedAt?: string; note?: string }>
     }) => reissueReport(payload),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: reportKeys.details(variables.reportId) })
       queryClient.invalidateQueries({ queryKey: reportKeys.byApproval(variables.approvalId) })
     },
-  })
-}
-
-export function useCustomerReports(customerId: string | null) {
-  return useQuery({
-    queryKey: ['reports', 'customer', customerId],
-    queryFn: () => fetchCustomerReports(customerId),
-    enabled: Boolean(customerId),
   })
 }
 

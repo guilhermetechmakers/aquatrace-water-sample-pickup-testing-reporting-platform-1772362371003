@@ -1,6 +1,7 @@
 /**
- * Approval Details Page (page_011)
- * Single result submission with test results, files, comments, audit trail, signature
+ * Approval Details Page (page_013)
+ * Single result submission with test results, files, comments, audit trail, signature.
+ * PDF report generation, versioning, reissue, and email distribution.
  */
 
 import { useState, useEffect } from 'react'
@@ -14,6 +15,9 @@ import {
   Download,
   UserPlus,
   Wrench,
+  Mail,
+  RefreshCw,
+  FileCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -42,6 +46,13 @@ import {
 } from '@/components/ui/dialog'
 import { CommentThread, SignatureWidget } from '@/components/approvals'
 import {
+  AttachmentGallery,
+  VersionSwitcher,
+  PDFPreviewModal,
+  ApprovalDetailsPanel,
+  SignatureBlock,
+} from '@/components/reports'
+import {
   useApproval,
   useApproveApproval,
   useRejectApproval,
@@ -49,8 +60,18 @@ import {
   useRequestCorrectiveAction,
   useReassignApproval,
 } from '@/hooks/useApprovals'
+import {
+  useReportByApprovalId,
+  useReportVersions,
+  useEnsureReportForApproval,
+  useGenerateReportPdf,
+  useSendReportEmail,
+  useReissueReport,
+  useReportPdfUrl,
+} from '@/hooks/useReportsPdf'
 import { useRBAC } from '@/hooks/useRBAC'
 import { useAuth } from '@/contexts/auth-context'
+import { supabase } from '@/lib/supabase'
 import { fetchLabManagers } from '@/api/users'
 import type { ProfileUser } from '@/api/users'
 import { toast } from 'sonner'
@@ -96,12 +117,53 @@ export function ApprovalDetailsPage() {
   const [reassignUserId, setReassignUserId] = useState('')
   const [reassignMessage, setReassignMessage] = useState('')
   const [labManagers, setLabManagers] = useState<ProfileUser[]>([])
+  const [pdfModalOpen, setPdfModalOpen] = useState(false)
+  const [selectedVersion, setSelectedVersion] = useState(1)
+
+  const ensureReportMutation = useEnsureReportForApproval()
+  const { data: report, refetch: refetchReport } = useReportByApprovalId(id ?? null)
+  const { data: versions = [] } = useReportVersions(id ?? null)
+  const generatePdfMutation = useGenerateReportPdf()
+  const sendEmailMutation = useSendReportEmail()
+  const reissueMutation = useReissueReport()
+
+  const selectedVersionData = (versions ?? []).find((v) => v.version === selectedVersion)
+  const { data: pdfUrl, isLoading: pdfUrlLoading } = useReportPdfUrl(
+    pdfModalOpen ? (selectedVersionData?.pdfStoragePath ?? null) : null
+  )
+
+  useEffect(() => {
+    const list = Array.isArray(versions) ? versions : []
+    if (list.length > 0 && selectedVersion === 1) {
+      const latest = Math.max(...list.map((v) => v.version ?? 1))
+      setSelectedVersion(latest)
+    }
+  }, [versions])
 
   useEffect(() => {
     fetchLabManagers()
       .then((list) => setLabManagers(Array.isArray(list) ? list : []))
       .catch(() => setLabManagers([]))
   }, [])
+
+  useEffect(() => {
+    if (
+      id &&
+      approval?.customerId &&
+      approval?.resultId &&
+      approval?.sampleId &&
+      !report &&
+      !ensureReportMutation.data &&
+      !ensureReportMutation.isPending
+    ) {
+      ensureReportMutation.mutate({
+        approvalId: id,
+        customerId: approval.customerId,
+        resultId: approval.resultId,
+        sampleId: approval.sampleId,
+      })
+    }
+  }, [id, approval?.customerId, approval?.resultId, approval?.sampleId, report, ensureReportMutation.data, ensureReportMutation.isPending])
 
   const safeApproval = approval ?? ({} as ApprovalRequest)
   const comments = safeApproval.comments ?? []
@@ -197,6 +259,178 @@ export function ApprovalDetailsPage() {
     )
   }
 
+  const handleViewPdf = () => setPdfModalOpen(true)
+
+  const handleGeneratePdf = () => {
+    if (!id || !safeApproval.customerId) return
+    const pickupData = {
+      technicianName: safeApproval.labTechnicianName ?? undefined,
+      pickupTime: safeApproval.createdAt ?? undefined,
+      location: safeApproval.sampleLocation ?? undefined,
+      pH: safeApproval.testResults?.pH ?? undefined,
+      chlorine: safeApproval.testResults?.chlorine ?? undefined,
+    }
+    const labResults = {
+      spcResult: safeApproval.testResults?.spc ?? undefined,
+      spcUnit: safeApproval.testResults?.spcUnit ?? undefined,
+      totalColiformResult: safeApproval.testResults?.totalColiform ?? undefined,
+      totalColiformUnit: safeApproval.testResults?.totalColiformUnit ?? undefined,
+      testedBy: safeApproval.labTechnicianName ?? undefined,
+      testedAt: safeApproval.createdAt ?? undefined,
+    }
+    const attachments = (supportingFiles ?? []).map((f) => ({
+      id: f.id,
+      filename: f.name,
+      fileType: f.type,
+      url: f.url,
+    }))
+    generatePdfMutation.mutate(
+      {
+        approvalId: id,
+        customerId: safeApproval.customerId,
+        pickupData,
+        labResults,
+        attachments,
+        signature: safeApproval.signature
+          ? {
+              id: safeApproval.signature.id,
+              signerName: safeApproval.signature.signerName,
+              signerRole: safeApproval.signature.signerRole,
+              signedAt: safeApproval.signature.signedAt,
+              signatureImageUrl: safeApproval.signature.signatureData ?? undefined,
+            }
+          : null,
+        auditTrail: (auditTrail ?? []).map((e) => ({
+          action: e.action,
+          performedBy: e.by ?? undefined,
+          performedAt: e.at ?? '',
+          note: e.details != null ? String(e.details) : undefined,
+        })),
+      },
+      {
+        onSuccess: () => {
+          toast.success('PDF generated')
+          refetchReport()
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'PDF generation failed'),
+      }
+    )
+  }
+
+  const [customerEmail, setCustomerEmail] = useState('')
+  useEffect(() => {
+    if (safeApproval.customerId) {
+      supabase
+        .from('customers')
+        .select('email')
+        .eq('id', safeApproval.customerId)
+        .single()
+        .then(({ data }) => setCustomerEmail((data as { email?: string } | null)?.email ?? ''))
+    }
+  }, [safeApproval.customerId])
+
+  const handleEmailToCustomer = () => {
+    if (!report || !safeApproval.customerName) {
+      toast.error('Report or customer email not available')
+      return
+    }
+    const recipient = (customerEmail || (approval as { customerEmail?: string })?.customerEmail) ?? ''
+    if (!recipient) {
+      toast.error('Customer email not found')
+      return
+    }
+    sendEmailMutation.mutate(
+      {
+        reportId: report.id,
+        version: selectedVersion,
+        recipient,
+        customerName: safeApproval.customerName,
+        reportTitle: `Water Test Report ${report.reportId}`,
+        pickupDate: safeApproval.createdAt ? format(new Date(safeApproval.createdAt), 'PP') : undefined,
+      },
+      {
+        onSuccess: () => toast.success('Email sent'),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Email failed'),
+      }
+    )
+  }
+
+  const handleReissue = () => {
+    if (!report?.id || !id || !safeApproval.customerId) return
+    const pickupData = {
+      technicianName: safeApproval.labTechnicianName ?? undefined,
+      pickupTime: safeApproval.createdAt ?? undefined,
+      location: safeApproval.sampleLocation ?? undefined,
+      pH: safeApproval.testResults?.pH ?? undefined,
+      chlorine: safeApproval.testResults?.chlorine ?? undefined,
+    }
+    const labResults = {
+      spcResult: safeApproval.testResults?.spc ?? undefined,
+      spcUnit: safeApproval.testResults?.spcUnit ?? undefined,
+      totalColiformResult: safeApproval.testResults?.totalColiform ?? undefined,
+      totalColiformUnit: safeApproval.testResults?.totalColiformUnit ?? undefined,
+      testedBy: safeApproval.labTechnicianName ?? undefined,
+      testedAt: safeApproval.createdAt ?? undefined,
+    }
+    const attachments = (supportingFiles ?? []).map((f) => ({
+      id: f.id,
+      filename: f.name,
+      fileType: f.type,
+      url: f.url,
+    }))
+    reissueMutation.mutate(
+      {
+        reportId: report.id,
+        approvalId: id,
+        customerId: safeApproval.customerId,
+        pickupData,
+        labResults,
+        attachments,
+        signature: safeApproval.signature
+          ? {
+              id: safeApproval.signature.id,
+              signerName: safeApproval.signature.signerName,
+              signerRole: safeApproval.signature.signerRole,
+              signedAt: safeApproval.signature.signedAt,
+              signatureImageUrl: safeApproval.signature.signatureData ?? undefined,
+            }
+          : null,
+        auditTrail: (auditTrail ?? []).map((e) => ({
+          action: e.action,
+          performedBy: e.by ?? undefined,
+          performedAt: e.at ?? '',
+          note: e.details != null ? String(e.details) : undefined,
+        })),
+      },
+      {
+        onSuccess: () => {
+          toast.success('Report reissued')
+          refetchReport()
+          setSelectedVersion((v) => v + 1)
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Reissue failed'),
+      }
+    )
+  }
+
+  const reportAttachments = (report?.attachments ?? []).length > 0
+    ? (report?.attachments ?? []).map((a) => ({
+        id: a.id,
+        filename: a.filename,
+        fileType: a.fileType,
+        url: a.url,
+        storagePath: a.storagePath,
+        size: a.size,
+        hash: a.hash,
+        embedded: a.embedded,
+      }))
+    : (supportingFiles ?? []).map((f) => ({
+        id: f.id,
+        filename: f.name,
+        fileType: f.type,
+        url: f.url,
+      }))
+
   if (!id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -266,6 +500,44 @@ export function ApprovalDetailsPage() {
               <AlertTriangle className="h-3 w-3" />
               Overdue
             </Badge>
+          )}
+          {safeApproval.status === 'approved' && !report && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGeneratePdf}
+              disabled={generatePdfMutation.isPending || !safeApproval.customerId}
+            >
+              {generatePdfMutation.isPending ? (
+                <span className="animate-pulse">Generating…</span>
+              ) : (
+                <>
+                  <FileCheck className="h-4 w-4 mr-1" />
+                  Generate PDF
+                </>
+              )}
+            </Button>
+          )}
+          {report && (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={handleViewPdf}>
+                <FileCheck className="h-4 w-4 mr-1" />
+                View PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleEmailToCustomer}
+                disabled={!customerEmail || sendEmailMutation.isPending}
+              >
+                <Mail className="h-4 w-4 mr-1" />
+                Email to Customer
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleReissue} disabled={reissueMutation.isPending}>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Reissue
+              </Button>
+            </div>
           )}
           {canAct && (
             <div className="flex flex-wrap gap-2">
@@ -349,6 +621,45 @@ export function ApprovalDetailsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {report && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FileCheck className="h-5 w-5 text-primary" />
+                  Report {report.reportId}
+                </CardTitle>
+                <CardDescription>Version history and attachments</CardDescription>
+              </div>
+              <VersionSwitcher
+                versions={versions as import('@/types/reports').ReportVersion[]}
+                currentVersion={selectedVersion}
+                onVersionChange={setSelectedVersion}
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <ApprovalDetailsPanel title="Attachments" description="Files included in report" defaultOpen>
+              <AttachmentGallery attachments={reportAttachments} />
+            </ApprovalDetailsPanel>
+            {safeApproval.signature && (
+              <ApprovalDetailsPanel title="Manager Signature" defaultOpen>
+                <SignatureBlock
+                  signature={{
+                    id: safeApproval.signature.id,
+                    signerName: safeApproval.signature.signerName,
+                    signerRole: safeApproval.signature.signerRole,
+                    signedAt: safeApproval.signature.signedAt,
+                    signatureImageUrl: safeApproval.signature.signatureData ?? undefined,
+                  }}
+                />
+              </ApprovalDetailsPanel>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -598,6 +909,15 @@ export function ApprovalDetailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PDFPreviewModal
+        open={pdfModalOpen}
+        onOpenChange={setPdfModalOpen}
+        pdfUrl={pdfUrl ?? undefined}
+        reportId={report?.reportId}
+        version={selectedVersion}
+        isLoading={pdfUrlLoading}
+      />
     </div>
   )
 }
