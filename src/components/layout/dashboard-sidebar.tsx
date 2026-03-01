@@ -41,7 +41,7 @@ const allNavItems = [
   { to: '/dashboard/reports/distribution', icon: Mail, label: 'Distribution', roles: ['LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/customers', icon: Users, label: 'Customers', roles: ['LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/invoicing', icon: DollarSign, label: 'Invoicing', roles: ['LAB_MANAGER', 'ADMIN'] },
-  { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', roles: ['LAB_MANAGER', 'ADMIN'] },
+  { to: '/dashboard/analytics', icon: BarChart3, label: 'Analytics', roles: ['LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/admin', icon: Shield, label: 'Admin', roles: ['ADMIN'] },
   { to: '/dashboard/alerts', icon: Bell, label: 'Alerts & Analytics', roles: ['ADMIN', 'LAB_MANAGER'] },
   { to: '/dashboard/users', icon: UserCog, label: 'Users', roles: ['ADMIN'] },
