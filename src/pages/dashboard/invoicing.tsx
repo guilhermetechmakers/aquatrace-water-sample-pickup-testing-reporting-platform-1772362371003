@@ -1,95 +1,164 @@
-import { Plus, Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+/**
+ * Invoicing & Accounts Receivable - Create, send, track, reconcile invoices
+ * AR aging, reminders, export, payment recording
+ */
 
-const mockInvoices = [
-  { id: 'INV-2024-001', customer: 'Acme Corp', amount: 450, status: 'paid', due: '2024-03-15' },
-  { id: 'INV-2024-002', customer: 'Beta Inc', amount: 280, status: 'pending', due: '2024-03-20' },
-]
+import { useState } from 'react'
+import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  InvoiceListTable,
+  InvoiceEditor,
+  ARDashboard,
+  RecordPaymentDialog,
+} from '@/components/billing'
+import {
+  useInvoices,
+  useBillingCustomers,
+  useARAgingSummary,
+  useARAccounts,
+  useCreateInvoice,
+  useRecordPayment,
+} from '@/hooks/useBilling'
+import { exportARAgingCSV } from '@/api/billing'
+import type { Invoice } from '@/types/billing'
 
 export function InvoicingPage() {
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 30)
+    return d.toISOString().slice(0, 10)
+  })
+
+  const { data: invoicesData, isLoading } = useInvoices({
+    status: statusFilter || undefined,
+    search: search || undefined,
+    page,
+    limit: 20,
+  })
+  const { data: customersData } = useBillingCustomers({ limit: 200 })
+  const { data: arSummary, isLoading: arLoading } = useARAgingSummary()
+  const { data: arAccounts = [] } = useARAccounts()
+
+  const createInvoice = useCreateInvoice()
+  const recordPayment = useRecordPayment()
+
+  const invoices = Array.isArray(invoicesData?.invoices) ? invoicesData!.invoices : []
+  const count = invoicesData?.count ?? 0
+  const customers = Array.isArray(customersData?.customers) ? customersData!.customers : []
+
+  const handleCreateInvoice = (payload: Parameters<typeof createInvoice.mutateAsync>[0]) => {
+    createInvoice.mutate(payload, { onSuccess: () => setShowCreate(false) })
+  }
+
+  const handleRecordPayment = (invoiceId: string, amount: number) => {
+    recordPayment.mutate({ invoiceId, amount }, { onSuccess: () => setPaymentInvoice(null) })
+  }
+
+  const handleExportCSV = () => {
+    const csv = exportARAgingCSV(arAccounts, customers)
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ar-aging-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId)
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invoicing & AR</h1>
           <p className="text-muted-foreground mt-1">
-            Create, send, and track invoices
+            Create, send, and track invoices. Manage accounts receivable.
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setShowCreate(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Create Invoice
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">$12,450</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">$2,100</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Paid This Month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">$8,320</p>
-          </CardContent>
-        </Card>
-      </div>
+      <ARDashboard
+        summary={arSummary ?? undefined}
+        isLoading={arLoading}
+        onExportCSV={handleExportCSV}
+        onScheduleReminders={() => {}}
+      />
 
-      <Card>
-        <CardHeader>
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search invoices..." className="pl-9" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="h-12 px-4 text-left align-middle font-medium">Invoice</th>
-                  <th className="h-12 px-4 text-left align-middle font-medium">Customer</th>
-                  <th className="h-12 px-4 text-left align-middle font-medium">Amount</th>
-                  <th className="h-12 px-4 text-left align-middle font-medium">Due Date</th>
-                  <th className="h-12 px-4 text-left align-middle font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockInvoices.map((inv) => (
-                  <tr key={inv.id} className="border-b hover:bg-muted/30 transition-colors">
-                    <td className="p-4 font-mono text-sm">{inv.id}</td>
-                    <td className="p-4">{inv.customer}</td>
-                    <td className="p-4">${inv.amount}</td>
-                    <td className="p-4 text-muted-foreground">{inv.due}</td>
-                    <td className="p-4">
-                      <Badge variant={inv.status === 'paid' ? 'approved' : 'pending'}>
-                        {inv.status}
-                      </Badge>
-                    </td>
-                  </tr>
+      {showCreate ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="mb-4">
+              <label className="text-sm font-medium">Customer</label>
+              <select
+                value={selectedCustomerId ?? ''}
+                onChange={(e) => setSelectedCustomerId(e.target.value || null)}
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select customer...</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="text-sm font-medium">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            {selectedCustomerId && selectedCustomer && (
+              <InvoiceEditor
+                customerId={selectedCustomerId}
+                customerName={selectedCustomer.name}
+                dueDate={dueDate}
+                onSave={handleCreateInvoice}
+                onCancel={() => setShowCreate(false)}
+                isLoading={createInvoice.isPending}
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <InvoiceListTable
+          invoices={invoices}
+          count={count}
+          page={page}
+          limit={20}
+          isLoading={isLoading}
+          search={search}
+          statusFilter={statusFilter}
+          onSearchChange={setSearch}
+          onStatusFilterChange={setStatusFilter}
+          onPageChange={setPage}
+          onRecordPayment={(inv) => setPaymentInvoice(inv)}
+        />
+      )}
+
+      <RecordPaymentDialog
+        invoice={paymentInvoice}
+        open={Boolean(paymentInvoice)}
+        onOpenChange={(open) => !open && setPaymentInvoice(null)}
+        onRecord={handleRecordPayment}
+        isLoading={recordPayment.isPending}
+      />
     </div>
   )
 }

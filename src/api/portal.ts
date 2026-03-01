@@ -33,13 +33,13 @@ export async function getCustomerIdForUser(userId: string | null): Promise<strin
 /** List reports for customer portal with filters */
 export async function fetchPortalReports(
   customerId: string | null,
-  filters?: { dateFrom?: string; dateTo?: string; status?: string; search?: string; page?: number; limit?: number }
+  filters?: { dateFrom?: string; dateTo?: string; status?: string; search?: string; testType?: string; page?: number; limit?: number }
 ): Promise<{ reports: Array<Record<string, unknown>>; count: number }> {
   if (!isSupabaseConfigured() || !customerId) return { reports: [], count: 0 }
 
   let q = supabase
     .from('reports')
-    .select('id, report_id, customer_id, pickup_id, status, created_at', { count: 'exact' })
+    .select('id, report_id, customer_id, pickup_id, result_id, status, created_at', { count: 'exact' })
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false })
 
@@ -59,6 +59,8 @@ export async function fetchPortalReports(
   const enriched = await Promise.all(
     reports.map(async (r: Record<string, unknown>) => {
       const reportUuid = (r.id as string) ?? ''
+      const resultId = (r.result_id as string) ?? null
+
       const { data: versionRow } = await supabase
         .from('report_versions')
         .select('pdf_storage_path, version')
@@ -77,27 +79,68 @@ export async function fetchPortalReports(
         .eq('id', r.pickup_id)
         .maybeSingle()
 
+      /** Derive test_types from lab_results (SPC, Total Coliform) */
+      let testTypes: string[] = []
+      if (resultId) {
+        const { data: labRow } = await supabase
+          .from('lab_results')
+          .select('spc_unit, total_coliform_unit')
+          .eq('id', resultId)
+          .maybeSingle()
+        if (labRow) {
+          const row = labRow as { spc_unit?: string; total_coliform_unit?: string }
+          if (row.spc_unit) testTypes.push('SPC')
+          if (row.total_coliform_unit) testTypes.push('Total Coliform')
+          if (testTypes.length === 0) testTypes = ['Standard']
+        }
+      }
+
+      /** Lab manager approval from report_signatures */
+      let labApproval: string | null = null
+      const { data: sigRow } = await supabase
+        .from('report_signatures')
+        .select('signer_role, signer_name, signed_at')
+        .eq('report_id', reportUuid)
+        .order('signed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (sigRow) {
+        const s = sigRow as { signer_role?: string; signer_name?: string }
+        labApproval = s.signer_name ?? s.signer_role ?? 'Approved'
+      }
+
       return {
         ...r,
         report_id: r.report_id,
         pdf_link: pdfUrl,
         pickup: pickupRow ? { location: (pickupRow as { location?: string }).location, sampleId: (pickupRow as { sample_id?: string }).sample_id } : null,
         version: versionRow ? (versionRow as { version?: number }).version : null,
+        test_types: testTypes,
+        lab_approval: labApproval,
       } as Record<string, unknown>
     })
   )
 
+  let filtered = enriched
   if (filters?.search?.trim()) {
     const term = filters.search.toLowerCase()
-    const filtered = enriched.filter(
+    filtered = enriched.filter(
       (r: Record<string, unknown>) =>
         String((r.report_id as string) ?? '').toLowerCase().includes(term) ||
         String((r.pickup as { location?: string })?.location ?? '').toLowerCase().includes(term) ||
         String((r.pickup as { sampleId?: string })?.sampleId ?? '').toLowerCase().includes(term)
     )
+  }
+  if (filters?.testType?.trim()) {
+    const tt = filters.testType.toLowerCase()
+    filtered = filtered.filter((r: Record<string, unknown>) => {
+      const types = (r.test_types as string[]) ?? []
+      return types.some((t) => t.toLowerCase().includes(tt))
+    })
+  }
+  if (filtered !== enriched) {
     return { reports: filtered, count: filtered.length }
   }
-
   return { reports: enriched, count: count ?? enriched.length }
 }
 
@@ -258,7 +301,7 @@ export async function revokeShareLink(linkId: string): Promise<boolean> {
   return !error
 }
 
-/** List attachments for report */
+/** List attachments for report with signed download URLs */
 export async function fetchReportAttachments(
   reportId: string,
   customerId: string | null
@@ -272,17 +315,38 @@ export async function fetchReportAttachments(
 
   if (error) return []
   const list = rows ?? []
-  const attachments: ReportAttachment[] = Array.isArray(list)
-    ? list.map((a: Record<string, unknown>) => ({
+  const rawAttachments = Array.isArray(list) ? list : []
+
+  const attachments: ReportAttachment[] = await Promise.all(
+    rawAttachments.map(async (a: Record<string, unknown>) => {
+      const storagePath = (a.storage_path as string) ?? ''
+      let url: string | undefined
+      if (storagePath) {
+        try {
+          const { data } = await supabase.storage.from('reports').createSignedUrl(storagePath, 3600)
+          url = data?.signedUrl ?? undefined
+        } catch {
+          // Fallback: try attachments bucket if reports doesn't have the file
+          try {
+            const { data } = await supabase.storage.from('attachments').createSignedUrl(storagePath, 3600)
+            url = data?.signedUrl ?? undefined
+          } catch {
+            // Ignore
+          }
+        }
+      }
+      return {
         id: (a.id as string) ?? '',
         filename: (a.filename as string) ?? '',
         fileType: (a.file_type as string) ?? '',
-        storagePath: (a.storage_path as string) ?? undefined,
+        storagePath: storagePath || undefined,
+        url,
         size: (a.size_bytes as number) ?? undefined,
         hash: (a.file_hash as string) ?? undefined,
         embedded: (a.embedded as boolean) ?? false,
-      }))
-    : []
+      }
+    })
+  )
   return attachments
 }
 
@@ -307,6 +371,22 @@ export async function requestReissue(
 
   if (error) return { success: false, message: error.message }
   return { success: true, message: 'Reissue request submitted' }
+}
+
+/** Log report download (call when user downloads PDF) */
+export async function logReportDownloaded(
+  customerId: string | null,
+  reportId: string
+): Promise<void> {
+  await logPortalAudit(customerId, 'report_downloaded', 'report', reportId)
+}
+
+/** Log invoice view (call when user views invoice PDF) */
+export async function logInvoiceViewed(
+  customerId: string | null,
+  invoiceId: string
+): Promise<void> {
+  await logPortalAudit(customerId, 'invoice_viewed', 'invoice', invoiceId)
 }
 
 /** Log portal audit event */

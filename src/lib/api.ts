@@ -84,3 +84,27 @@ export class ApiError extends Error {
     this.code = code
   }
 }
+
+/**
+ * apiFetch with runtime guards - validates response shape, returns safe arrays.
+ * Use for API responses that return lists.
+ */
+export async function apiFetchList<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<{ data: T[]; count?: number }> {
+  const raw = await apiRequest<{ data?: T[]; items?: T[]; count?: number }>(endpoint, options)
+  const list = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.items) ? raw.items : []
+  const count = typeof raw?.count === 'number' ? raw.count : list.length
+  return { data: list, count }
+}
+
+/**
+ * Safely extract array from API response with runtime validation.
+ */
+export function safeArrayFromApi<T>(
+  response: { data?: T[]; items?: T[] } | null | undefined
+): T[] {
+  const list = response?.data ?? response?.items ?? []
+  return Array.isArray(list) ? list : []
+}

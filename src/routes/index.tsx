@@ -20,6 +20,7 @@ import { LabTechnicianDashboardPage } from '@/pages/dashboard/lab-technician-das
 import { LabResultsEntryPage } from '@/pages/dashboard/lab-results-entry'
 import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
 import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
+import { AdminBillingPage } from '@/pages/dashboard/admin/billing'
 import { LabManagerDashboardPage } from '@/pages/dashboard/lab-manager-dashboard'
 import { ApprovalDetailsPage } from '@/pages/dashboard/approval-details'
 import { ReportsPage } from '@/pages/dashboard/reports'
@@ -158,6 +159,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AdminPage /> },
           { path: 'thresholds', element: <ThresholdConfigPage /> },
+          { path: 'billing', element: <AdminBillingPage /> },
         ],
       },
       { path: 'users', element: <AdminPage /> },

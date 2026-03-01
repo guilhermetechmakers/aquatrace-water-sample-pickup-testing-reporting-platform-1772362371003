@@ -16,9 +16,11 @@ type InvoiceRow = Partial<PortalInvoice> & { id: string; invoiceNumber?: string;
 export interface InvoiceListProps {
   invoices: InvoiceRow[]
   isLoading?: boolean
+  /** Called when user views/downloads invoice (for audit logging) */
+  onViewInvoice?: (invoiceId: string) => void
 }
 
-export function InvoiceList({ invoices = [], isLoading = false }: InvoiceListProps) {
+export function InvoiceList({ invoices = [], isLoading = false, onViewInvoice }: InvoiceListProps) {
   const [shareTarget, setShareTarget] = useState<{ type: 'report' | 'invoice'; id: string } | null>(null)
   const safeInvoices = Array.isArray(invoices) ? invoices : []
 
@@ -108,7 +110,12 @@ export function InvoiceList({ invoices = [], isLoading = false }: InvoiceListPro
                         size="sm"
                         className="h-8"
                         disabled={!inv.pdfLink && !inv.pdfPath}
-                        onClick={() => (inv.pdfLink ?? inv.pdfPath) && window.open(inv.pdfLink ?? inv.pdfPath ?? '#', '_blank')}
+                        onClick={() => {
+                          if (inv.pdfLink ?? inv.pdfPath) {
+                            onViewInvoice?.(inv.id)
+                            window.open(inv.pdfLink ?? inv.pdfPath ?? '#', '_blank')
+                          }
+                        }}
                         aria-label="Download invoice"
                       >
                         <Download className="h-4 w-4 mr-1" />

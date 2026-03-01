@@ -54,6 +54,7 @@ export function usePortalReports(filters?: {
   dateTo?: string
   status?: string
   search?: string
+  testType?: string
   page?: number
   limit?: number
 }) {

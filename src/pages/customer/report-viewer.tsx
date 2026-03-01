@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTenantData } from '@/hooks/usePortal'
-import { fetchPortalReports } from '@/api/portal'
+import { fetchPortalReports, logReportDownloaded } from '@/api/portal'
 import { fetchReportAttachments } from '@/api/portal'
 import { AttachmentPanel } from '@/components/portal'
 import type { ReportAttachment } from '@/types/reports'
@@ -85,13 +85,14 @@ export function ReportViewerPage() {
   }, [reportId, customerId ?? null])
 
   const handleDownload = useCallback(() => {
-    if (pdfUrl) {
+    if (pdfUrl && reportId) {
+      logReportDownloaded(customerId ?? null, reportId).catch(() => {})
       window.open(pdfUrl, '_blank')
       toast.success('Download started')
     } else {
       toast.error('PDF not available')
     }
-  }, [pdfUrl])
+  }, [pdfUrl, reportId, customerId])
 
   const handlePrint = useCallback(() => {
     window.print()

@@ -15,11 +15,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePortalReports, usePortalInvoices, useTenantData } from '@/hooks/usePortal'
+import { useDebouncedValue } from '@/hooks/useDebounce'
 import { ReportList } from '@/components/portal/report-list'
 import { InvoiceList } from '@/components/portal/invoice-list'
 import { UserManagementSection } from '@/components/portal/user-management-section'
 import { usePortalSupport } from '@/contexts/portal-support-context'
-import { logPortalAudit } from '@/api/portal'
+import { logPortalAudit, logReportDownloaded, logInvoiceViewed } from '@/api/portal'
 import { cn } from '@/lib/utils'
 
 export function CustomerPortalPage() {
@@ -27,21 +28,25 @@ export function CustomerPortalPage() {
   const [search, setSearch] = useState('')
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [testTypeFilter, setTestTypeFilter] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const support = usePortalSupport()
 
+  const debouncedSearch = useDebouncedValue(search, 300)
+
   const reportFilters = useMemo(
     () => ({
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       status: statusFilter ?? undefined,
+      testType: testTypeFilter ?? undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       page,
       limit: 20,
     }),
-    [search, statusFilter, dateFrom, dateTo, page]
+    [debouncedSearch, statusFilter, testTypeFilter, dateFrom, dateTo, page]
   )
 
   const invoiceFilters = useMemo(
@@ -70,6 +75,24 @@ export function CustomerPortalPage() {
     [customerId]
   )
 
+  const handleDownloadReport = useCallback(
+    (reportId: string) => {
+      if (customerId) {
+        logReportDownloaded(customerId, reportId).catch(() => {})
+      }
+    },
+    [customerId]
+  )
+
+  const handleViewInvoice = useCallback(
+    (invoiceId: string) => {
+      if (customerId) {
+        logInvoiceViewed(customerId, invoiceId).catch(() => {})
+      }
+    },
+    [customerId]
+  )
+
   const reportListItems = useMemo(
     () =>
       (reports ?? []).map((r: Record<string, unknown>) => ({
@@ -81,6 +104,8 @@ export function CustomerPortalPage() {
         pdf_link: (r.pdf_link as string) ?? null,
         pickup: (r.pickup as { location?: string; sampleId?: string }) ?? null,
         version: r.version as number | undefined,
+        test_types: Array.isArray(r.test_types) ? (r.test_types as string[]) : [],
+        lab_approval: (r.lab_approval as string) ?? null,
       })),
     [reports]
   )
@@ -151,7 +176,7 @@ export function CustomerPortalPage() {
             </p>
           </CardContent>
         </Card>
-        <UserManagementSection canManageUsers={true} />
+        <UserManagementSection canManageUsers={Boolean(customerId)} />
       </div>
 
       <Tabs defaultValue="reports" className="space-y-4">
@@ -198,6 +223,16 @@ export function CustomerPortalPage() {
                         {s}
                       </Button>
                     ))}
+                    {['SPC', 'Total Coliform'].map((tt) => (
+                      <Button
+                        key={tt}
+                        variant={testTypeFilter === tt ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTestTypeFilter(testTypeFilter === tt ? null : tt)}
+                      >
+                        {tt}
+                      </Button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -211,6 +246,7 @@ export function CustomerPortalPage() {
                 limit={20}
                 onPageChange={setPage}
                 onViewReport={handleViewReport}
+                onDownloadReport={handleDownloadReport}
               />
             </CardContent>
           </Card>
@@ -229,7 +265,7 @@ export function CustomerPortalPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <InvoiceList invoices={invoices} isLoading={invoicesLoading} />
+              <InvoiceList invoices={invoices} isLoading={invoicesLoading} onViewInvoice={handleViewInvoice} />
             </CardContent>
           </Card>
         </TabsContent>

@@ -8,6 +8,8 @@ import {
   Check,
   X,
   Settings,
+  CreditCard,
+  Receipt,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -177,6 +179,34 @@ export function AdminPage() {
               <CardTitle className="text-lg">Threshold Config</CardTitle>
               <CardDescription>
                 SPC and Total Coliform thresholds per customer/site
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to="/dashboard/invoicing">
+          <Card className="h-full transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CreditCard className="h-10 w-10 text-primary" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">Billing & Invoicing</CardTitle>
+              <CardDescription>
+                Invoices, AR aging, payments, Stripe webhooks
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to="/dashboard/admin/billing">
+          <Card className="h-full transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <Receipt className="h-10 w-10 text-primary" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">Billing Settings</CardTitle>
+              <CardDescription>
+                Stripe webhooks, tax defaults, reminder cadence
               </CardDescription>
             </CardContent>
           </Card>

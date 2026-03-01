@@ -29,6 +29,8 @@ export interface ReportListItem {
   pdf_link?: string | null
   pickup?: { location?: string; sampleId?: string } | null
   version?: number
+  test_types?: string[]
+  lab_approval?: string | null
 }
 
 export interface ReportListProps {
@@ -41,6 +43,8 @@ export interface ReportListProps {
   onFiltersChange?: (filters: Record<string, unknown>) => void
   /** Called when user clicks View (for audit logging) */
   onViewReport?: (reportId: string) => void
+  /** Called when user clicks Download (for audit logging) */
+  onDownloadReport?: (reportId: string) => void
 }
 
 export function ReportList({
@@ -51,6 +55,7 @@ export function ReportList({
   limit = 20,
   onPageChange,
   onViewReport,
+  onDownloadReport,
 }: ReportListProps) {
   const [shareTarget, setShareTarget] = useState<{ type: 'report' | 'invoice'; id: string; reportId?: string } | null>(null)
   const [reissueTarget, setReissueTarget] = useState<{ id: string; reportId?: string } | null>(null)
@@ -60,6 +65,7 @@ export function ReportList({
 
   const handleDownload = (r: ReportListItem) => {
     if (r.pdf_link) {
+      onDownloadReport?.(r.id)
       window.open(r.pdf_link, '_blank')
     }
   }
@@ -74,8 +80,10 @@ export function ReportList({
                 <tr className="border-b bg-muted/50">
                   <th className="h-12 px-4 text-left align-middle font-medium">Report</th>
                   <th className="h-12 px-4 text-left align-middle font-medium">Location</th>
+                  <th className="h-12 px-4 text-left align-middle font-medium">Test Types</th>
                   <th className="h-12 px-4 text-left align-middle font-medium">Date</th>
                   <th className="h-12 px-4 text-left align-middle font-medium">Status</th>
+                  <th className="h-12 px-4 text-left align-middle font-medium">Lab Approval</th>
                   <th className="h-12 px-4 text-right align-middle font-medium">Actions</th>
                 </tr>
               </thead>
@@ -85,6 +93,8 @@ export function ReportList({
                     <td className="p-4"><Skeleton className="h-5 w-32" /></td>
                     <td className="p-4"><Skeleton className="h-5 w-40" /></td>
                     <td className="p-4"><Skeleton className="h-5 w-24" /></td>
+                    <td className="p-4"><Skeleton className="h-5 w-24" /></td>
+                    <td className="p-4"><Skeleton className="h-5 w-20" /></td>
                     <td className="p-4"><Skeleton className="h-5 w-20" /></td>
                     <td className="p-4"><Skeleton className="h-8 w-24 ml-auto" /></td>
                   </tr>
@@ -118,8 +128,10 @@ export function ReportList({
               <tr className="border-b">
                 <th className="h-12 px-4 text-left align-middle font-medium">Report</th>
                 <th className="h-12 px-4 text-left align-middle font-medium">Location</th>
+                <th className="h-12 px-4 text-left align-middle font-medium">Test Types</th>
                 <th className="h-12 px-4 text-left align-middle font-medium">Date</th>
                 <th className="h-12 px-4 text-left align-middle font-medium">Status</th>
+                <th className="h-12 px-4 text-left align-middle font-medium">Lab Approval</th>
                 <th className="h-12 px-4 text-right align-middle font-medium">Actions</th>
               </tr>
             </thead>
@@ -141,6 +153,11 @@ export function ReportList({
                     {r.pickup?.location ?? '—'}
                   </td>
                   <td className="p-4 text-sm">
+                    {Array.isArray(r.test_types) && r.test_types.length > 0
+                      ? r.test_types.join(', ')
+                      : '—'}
+                  </td>
+                  <td className="p-4 text-sm">
                     {r.created_at ? format(new Date(r.created_at), 'PP') : '—'}
                   </td>
                   <td className="p-4">
@@ -155,6 +172,9 @@ export function ReportList({
                     >
                       {r.status ?? '—'}
                     </Badge>
+                  </td>
+                  <td className="p-4 text-sm text-muted-foreground">
+                    {r.lab_approval ?? '—'}
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-2">
