@@ -81,7 +81,7 @@ export function useRevokeAllSessions() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: () => profileApi.revokeAllSessions(),
+    mutationFn: (exceptSessionId?: string) => profileApi.revokeAllSessions(exceptSessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKeys.sessions() })
       toast.success('All other sessions revoked')

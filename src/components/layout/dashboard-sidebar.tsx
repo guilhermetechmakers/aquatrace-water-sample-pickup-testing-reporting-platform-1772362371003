@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSidebar } from '@/contexts/sidebar-context'
+import { useAuth } from '@/contexts/auth-context'
 import {
   LayoutDashboard,
   Droplets,
@@ -14,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -32,6 +34,7 @@ const navItems = [
 
 export function DashboardSidebar() {
   const { collapsed, setCollapsed } = useSidebar()
+  const { signOut } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
@@ -101,7 +104,7 @@ export function DashboardSidebar() {
           </nav>
 
           <Separator />
-          <div className="p-4">
+          <div className="space-y-1 p-4">
             <Link
               to="/dashboard/profile"
               onClick={() => setMobileOpen(false)}
@@ -113,6 +116,18 @@ export function DashboardSidebar() {
               <Settings className="h-5 w-5 shrink-0" />
               {!collapsed && <span>Profile</span>}
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false)
+                signOut()
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Sign out</span>}
+            </button>
           </div>
         </div>
 

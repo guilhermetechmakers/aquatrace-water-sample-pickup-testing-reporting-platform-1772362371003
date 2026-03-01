@@ -3,12 +3,16 @@ import { SidebarProvider } from '@/contexts/sidebar-context'
 import { AuthLayout } from '@/components/layout/auth-layout'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { PortalLayout } from '@/components/layout/portal-layout'
+import { ProtectedRoute } from '@/components/auth/protected-route'
+import { GuestRoute } from '@/components/auth/guest-route'
 
 import { LandingPage } from '@/pages/landing'
 import { LoginPage } from '@/pages/auth/login'
 import { SignupPage } from '@/pages/auth/signup'
 import { ForgotPasswordPage } from '@/pages/auth/forgot-password'
+import { ResetPasswordPage } from '@/pages/auth/reset-password'
 import { VerifyEmailPage } from '@/pages/auth/verify-email'
+import { AuthCallbackPage } from '@/pages/auth/auth-callback'
 
 import { DashboardOverview } from '@/pages/dashboard/overview'
 import { SamplesPage } from '@/pages/dashboard/samples'
@@ -26,6 +30,10 @@ import { PrivacyPage } from '@/pages/privacy'
 import { TermsPage } from '@/pages/terms'
 import { NotFoundPage } from '@/pages/not-found'
 import { ErrorPage } from '@/pages/error'
+import { AUTH_ROLES } from '@/types/auth'
+
+const DASHBOARD_ROLES = AUTH_ROLES.filter((r) => r !== 'CUSTOMER_VIEW')
+const PORTAL_ROLES = ['CUSTOMER_VIEW' as const]
 
 export const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
@@ -36,19 +44,61 @@ export const router = createBrowserRouter([
   {
     element: <AuthLayout />,
     children: [
-      { path: '/login', element: <LoginPage /> },
-      { path: '/signup', element: <SignupPage /> },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
-      { path: '/verify-email', element: <VerifyEmailPage /> },
+      {
+        path: '/login',
+        element: (
+          <GuestRoute>
+            <LoginPage />
+          </GuestRoute>
+        ),
+      },
+      {
+        path: '/signup',
+        element: (
+          <GuestRoute>
+            <SignupPage />
+          </GuestRoute>
+        ),
+      },
+      {
+        path: '/forgot-password',
+        element: (
+          <GuestRoute>
+            <ForgotPasswordPage />
+          </GuestRoute>
+        ),
+      },
+      {
+        path: '/reset-password',
+        element: (
+          <GuestRoute>
+            <ResetPasswordPage />
+          </GuestRoute>
+        ),
+      },
+      {
+        path: '/verify-email',
+        element: (
+          <GuestRoute>
+            <VerifyEmailPage />
+          </GuestRoute>
+        ),
+      },
+      {
+        path: '/auth/callback',
+        element: <AuthCallbackPage />,
+      },
     ],
   },
 
   {
     path: '/dashboard',
     element: (
-      <SidebarProvider>
-        <DashboardLayout />
-      </SidebarProvider>
+      <ProtectedRoute allowedRoles={DASHBOARD_ROLES}>
+        <SidebarProvider>
+          <DashboardLayout />
+        </SidebarProvider>
+      </ProtectedRoute>
     ),
     children: [
       { index: true, element: <DashboardOverview /> },
@@ -65,7 +115,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/portal',
-    element: <PortalLayout />,
+    element: (
+      <ProtectedRoute allowedRoles={PORTAL_ROLES}>
+        <PortalLayout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, element: <CustomerPortalPage /> },
     ],

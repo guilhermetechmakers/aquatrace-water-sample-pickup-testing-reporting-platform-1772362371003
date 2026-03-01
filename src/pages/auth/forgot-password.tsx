@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +15,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useAuth } from '@/contexts/auth-context'
+import { cn } from '@/lib/utils'
 
 const schema = z.object({
   email: z.string().email('Invalid email address'),
@@ -21,18 +25,34 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export function ForgotPasswordPage() {
+  const { resetPassword } = useAuth()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitSuccessful, setIsSubmitSuccessful] = useState(false)
+
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting, isSubmitSuccessful },
+    formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { email: '' },
   })
 
   const onSubmit = async (data: FormData) => {
-    await new Promise((r) => setTimeout(r, 800))
-    console.log('Reset requested for:', data.email)
+    setIsSubmitting(true)
+    try {
+      const { error } = await resetPassword(data.email)
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      setIsSubmitSuccessful(true)
+      toast.success('Check your email for the reset link')
+    } catch {
+      toast.error('Failed to send reset email')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (isSubmitSuccessful) {
@@ -46,7 +66,9 @@ export function ForgotPasswordPage() {
         </CardHeader>
         <CardFooter>
           <Link to="/login" className="w-full">
-            <Button variant="outline" className="w-full">Back to login</Button>
+            <Button variant="outline" className="w-full">
+              Back to login
+            </Button>
           </Link>
         </CardFooter>
       </Card>
@@ -69,8 +91,10 @@ export function ForgotPasswordPage() {
               id="email"
               type="email"
               placeholder="you@example.com"
+              autoComplete="email"
               {...register('email')}
-              className={errors.email ? 'border-destructive' : ''}
+              className={cn(errors.email && 'border-destructive')}
+              aria-invalid={!!errors.email}
             />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>

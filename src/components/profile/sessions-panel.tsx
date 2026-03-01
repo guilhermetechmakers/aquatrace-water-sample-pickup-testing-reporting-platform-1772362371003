@@ -115,6 +115,7 @@ export function SessionsPanel() {
   const [showRevokeAllConfirm, setShowRevokeAllConfirm] = useState(false)
 
   const sessions = data?.sessions ?? []
+  const currentSession = sessions.find((s) => s.isCurrent)
   const otherSessions = sessions.filter((s) => !s.isCurrent)
   const hasOtherSessions = otherSessions.length > 0
 
@@ -199,7 +200,7 @@ export function SessionsPanel() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                revokeAll.mutate()
+                revokeAll.mutate(currentSession?.id)
                 setShowRevokeAllConfirm(false)
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
