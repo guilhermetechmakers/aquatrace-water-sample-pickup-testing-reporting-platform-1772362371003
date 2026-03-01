@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +13,7 @@ import {
   InvoiceEditor,
   ARDashboard,
   RecordPaymentDialog,
+  ARRemindersDialog,
 } from '@/components/billing'
 import {
   useInvoices,
@@ -20,15 +22,25 @@ import {
   useARAccounts,
   useCreateInvoice,
   useRecordPayment,
+  useSendInvoice,
+  useTriggerARReminders,
+  useSaveBillingSettings,
 } from '@/hooks/useBilling'
 import { exportARAgingCSV } from '@/api/billing'
 import type { Invoice } from '@/types/billing'
 
 export function InvoicingPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const customerFromUrl = searchParams.get('customer') ?? ''
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [customerFilter, setCustomerFilter] = useState(customerFromUrl)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [showReminders, setShowReminders] = useState(false)
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [dueDate, setDueDate] = useState(() => {
@@ -39,6 +51,9 @@ export function InvoicingPage() {
 
   const { data: invoicesData, isLoading } = useInvoices({
     status: statusFilter || undefined,
+    customerId: customerFilter || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
     search: search || undefined,
     page,
     limit: 20,
@@ -49,6 +64,9 @@ export function InvoicingPage() {
 
   const createInvoice = useCreateInvoice()
   const recordPayment = useRecordPayment()
+  const sendInvoice = useSendInvoice()
+  const triggerReminders = useTriggerARReminders()
+  const saveBillingSettings = useSaveBillingSettings()
 
   const invoices = Array.isArray(invoicesData?.invoices) ? invoicesData!.invoices : []
   const count = invoicesData?.count ?? 0
@@ -58,8 +76,20 @@ export function InvoicingPage() {
     createInvoice.mutate(payload, { onSuccess: () => setShowCreate(false) })
   }
 
-  const handleRecordPayment = (invoiceId: string, amount: number) => {
-    recordPayment.mutate({ invoiceId, amount }, { onSuccess: () => setPaymentInvoice(null) })
+  const handleRecordPayment = (invoiceId: string, amount: number, method?: import('@/types/billing').PaymentMethod) => {
+    recordPayment.mutate({ invoiceId, amount, method }, { onSuccess: () => setPaymentInvoice(null) })
+  }
+
+  const handleSendInvoice = (inv: Invoice) => {
+    sendInvoice.mutate(inv.id)
+  }
+
+  const handleDownloadInvoice = (inv: Invoice) => {
+    navigate(`/dashboard/invoicing/${inv.id}`)
+  }
+
+  const handleRowClick = (inv: Invoice) => {
+    navigate(`/dashboard/invoicing/${inv.id}`)
   }
 
   const handleExportCSV = () => {
@@ -71,6 +101,25 @@ export function InvoicingPage() {
     a.download = `ar-aging-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleExportPDF = () => {
+    const custMap = new Map((customers ?? []).map((c) => [c.id, c.name]))
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+    const rows = (arAccounts ?? []).map((a) => {
+      const name = custMap.get(a.customerId) ?? a.customerId
+      return `<tr><td>${name}</td><td>${a.balance.toFixed(2)}</td><td>${a.agingCurrent.toFixed(2)}</td><td>${a.aging7.toFixed(2)}</td><td>${a.aging14.toFixed(2)}</td><td>${a.aging30.toFixed(2)}</td><td>${a.aging60.toFixed(2)}</td><td>${a.aging90Plus.toFixed(2)}</td></tr>`
+    }).join('')
+    printWindow.document.write(`
+      <!DOCTYPE html><html><head><title>AR Aging Report</title>
+      <style>body{font-family:Inter,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border:1px solid #ddd}th{background:#f5f5f5}</style>
+      </head><body><h1>AR Aging Report</h1><p>Generated: ${new Date().toLocaleDateString()}</p>
+      <table><thead><tr><th>Customer</th><th>Balance</th><th>Current</th><th>1-7</th><th>8-14</th><th>15-30</th><th>31-60</th><th>90+</th></tr></thead><tbody>${rows}</tbody></table>
+      </body></html>`)
+    printWindow.document.close()
+    printWindow.print()
+    printWindow.close()
   }
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId)
@@ -94,7 +143,8 @@ export function InvoicingPage() {
         summary={arSummary ?? undefined}
         isLoading={arLoading}
         onExportCSV={handleExportCSV}
-        onScheduleReminders={() => {}}
+        onExportPDF={handleExportPDF}
+        onScheduleReminders={() => setShowReminders(true)}
       />
 
       {showCreate ? (
@@ -145,10 +195,20 @@ export function InvoicingPage() {
           isLoading={isLoading}
           search={search}
           statusFilter={statusFilter}
+          customerFilter={customerFilter}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          customers={customers}
           onSearchChange={setSearch}
           onStatusFilterChange={setStatusFilter}
+          onCustomerFilterChange={setCustomerFilter}
+          onDateFromChange={setDateFrom}
+          onDateToChange={setDateTo}
           onPageChange={setPage}
+          onSend={handleSendInvoice}
+          onDownload={handleDownloadInvoice}
           onRecordPayment={(inv) => setPaymentInvoice(inv)}
+          onRowClick={handleRowClick}
         />
       )}
 
@@ -158,6 +218,22 @@ export function InvoicingPage() {
         onOpenChange={(open) => !open && setPaymentInvoice(null)}
         onRecord={handleRecordPayment}
         isLoading={recordPayment.isPending}
+      />
+
+      <ARRemindersDialog
+        open={showReminders}
+        onOpenChange={setShowReminders}
+        onSchedule={(cadence) => {
+          saveBillingSettings.mutate(
+            { remindersCadence: cadence },
+            {
+              onSuccess: () => {
+                triggerReminders.mutate()
+                setShowReminders(false)
+              },
+            }
+          )
+        }}
       />
     </div>
   )

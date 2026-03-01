@@ -10,11 +10,14 @@ import {
   Settings,
   CreditCard,
   Receipt,
+  DollarSign,
+  TrendingUp,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRBAC } from '@/hooks/useRBAC'
 import { fetchRoles } from '@/api/roles'
+import { useARAgingSummary } from '@/hooks/useBilling'
 import { getPermissionsForRole } from '@/lib/rbac-permissions'
 import { AUTH_ROLES, ROLE_LABELS } from '@/types/auth'
 import type { AuthRole } from '@/types/auth'
@@ -113,8 +116,18 @@ function PermissionMatrix() {
   )
 }
 
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
 export function AdminPage() {
   const { hasPermission } = useRBAC()
+  const { data: arSummary } = useARAgingSummary()
 
   if (!hasPermission('admin_ui', 'read')) {
     return (
@@ -131,6 +144,14 @@ export function AdminPage() {
     )
   }
 
+  const s = arSummary ?? {
+    totalOutstanding: 0,
+    totalOverdue: 0,
+    paidThisMonth: 0,
+    buckets: { current: 0, days7: 0, days14: 0, days30: 0, days60: 0, days90Plus: 0 },
+    counts: { current: 0, days7: 0, days14: 0, days30: 0, days60: 0, days90Plus: 0 },
+  }
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -138,6 +159,42 @@ export function AdminPage() {
         <p className="text-muted-foreground mt-1">
           Manage roles, permissions, users, and audit logs
         </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="overflow-hidden border-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              AR Outstanding
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{formatCurrency(s.totalOutstanding ?? 0)}</p>
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden border-destructive/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-destructive" />
+              Overdue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-destructive">{formatCurrency(s.totalOverdue ?? 0)}</p>
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden border-success/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-success" />
+              Paid This Month
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-success">{formatCurrency(s.paidThisMonth ?? 0)}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -192,7 +249,7 @@ export function AdminPage() {
             <CardContent>
               <CardTitle className="text-lg">Billing & Invoicing</CardTitle>
               <CardDescription>
-                Invoices, AR aging, payments, Stripe webhooks
+                Create invoices, record payments, AR aging, export CSV/PDF
               </CardDescription>
             </CardContent>
           </Card>

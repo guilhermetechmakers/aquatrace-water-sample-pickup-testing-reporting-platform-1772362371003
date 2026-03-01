@@ -38,8 +38,12 @@ export interface InvoiceListTableProps {
   customerFilter?: string
   dateFrom?: string
   dateTo?: string
+  customers?: { id: string; name: string }[]
   onSearchChange?: (value: string) => void
   onStatusFilterChange?: (value: string) => void
+  onCustomerFilterChange?: (value: string) => void
+  onDateFromChange?: (value: string) => void
+  onDateToChange?: (value: string) => void
   onPageChange?: (page: number) => void
   onSend?: (invoice: Invoice) => void
   onDownload?: (invoice: Invoice) => void
@@ -76,8 +80,15 @@ export function InvoiceListTable({
   isLoading = false,
   search = '',
   statusFilter = '',
+  customerFilter = '',
+  dateFrom = '',
+  dateTo = '',
+  customers = [],
   onSearchChange,
   onStatusFilterChange,
+  onCustomerFilterChange,
+  onDateFromChange,
+  onDateToChange,
   onPageChange,
   onSend,
   onDownload,
@@ -107,30 +118,62 @@ export function InvoiceListTable({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search invoices..."
-              value={search}
-              onChange={(e) => onSearchChange?.(e.target.value)}
-              className="pl-9"
-            />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search invoices..."
+                value={search}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => onStatusFilterChange?.(e.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="issued">Issued</option>
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+              <option value="partially_paid">Partially Paid</option>
+              <option value="refunded">Refunded</option>
+            </select>
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => onStatusFilterChange?.(e.target.value)}
-            className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="issued">Issued</option>
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-            <option value="partially_paid">Partially Paid</option>
-            <option value="refunded">Refunded</option>
-          </select>
+          <div className="flex flex-wrap gap-4">
+            {onCustomerFilterChange && customers.length > 0 && (
+              <select
+                value={customerFilter}
+                onChange={(e) => onCustomerFilterChange(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">All customers</option>
+                {(customers ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+            {onDateFromChange && (
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => onDateFromChange(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            )}
+            {onDateToChange && (
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => onDateToChange(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">

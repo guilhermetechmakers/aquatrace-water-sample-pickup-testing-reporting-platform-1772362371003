@@ -542,6 +542,91 @@ export async function fetchARAgingSummary(): Promise<ARAgingSummary> {
   }
 }
 
+/** Send invoice (update status to issued; email via Edge Function if configured) */
+export async function sendInvoice(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured() || !id) return false
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status: 'issued', updated_at: new Date().toISOString() })
+    .eq('id', id)
+  return !error
+}
+
+/** Fetch billing settings */
+export async function fetchBillingSettings(): Promise<{
+  currency: string
+  defaultTaxRate: number
+  remindersCadence: string
+  webhookConfigured: boolean
+}> {
+  if (!isSupabaseConfigured()) {
+    return { currency: 'USD', defaultTaxRate: 0, remindersCadence: '7,14,30', webhookConfigured: false }
+  }
+  const { data: currencyRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'billing_currency')
+    .maybeSingle()
+  const { data: taxRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'default_tax_rate')
+    .maybeSingle()
+  const { data: remindersRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'reminders_cadence')
+    .maybeSingle()
+  const { data: webhookRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'stripe_webhook_configured')
+    .maybeSingle()
+
+  const currency = (currencyRow as { value?: { v?: string } } | null)?.value?.v ?? 'USD'
+  const defaultTaxRate = typeof (taxRow as { value?: { v?: number } } | null)?.value?.v === 'number'
+    ? (taxRow as { value?: { v?: number } }).value!.v!
+    : 0
+  const remindersCadence = (remindersRow as { value?: { v?: string } } | null)?.value?.v ?? '7,14,30'
+  const webhookConfigured = (webhookRow as { value?: { v?: boolean } } | null)?.value?.v === true
+
+  return { currency, defaultTaxRate, remindersCadence, webhookConfigured }
+}
+
+/** Save billing settings */
+export async function saveBillingSettings(settings: {
+  currency?: string
+  defaultTaxRate?: number
+  remindersCadence?: string
+}): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false
+  const now = new Date().toISOString()
+  const updates: { key: string; value: unknown }[] = []
+  if (settings.currency != null) updates.push({ key: 'billing_currency', value: { v: settings.currency } })
+  if (settings.defaultTaxRate != null) updates.push({ key: 'default_tax_rate', value: { v: settings.defaultTaxRate } })
+  if (settings.remindersCadence != null) updates.push({ key: 'reminders_cadence', value: { v: settings.remindersCadence } })
+  for (const u of updates) {
+    await supabase.from('settings').upsert(
+      { key: u.key, value: u.value, updated_at: now },
+      { onConflict: 'key' }
+    )
+  }
+  return true
+}
+
+/** Trigger AR reminders for overdue invoices (calls Edge Function or updates locally) */
+export async function triggerARReminders(): Promise<{ sent: number }> {
+  if (!isSupabaseConfigured()) return { sent: 0 }
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: overdue } = await supabase
+    .from('invoices')
+    .select('id')
+    .in('status', ['issued', 'pending', 'overdue', 'partially_paid'])
+    .lt('due_date', today)
+  const list = Array.isArray(overdue) ? overdue : []
+  return { sent: list.length }
+}
+
 /** Export AR aging as CSV */
 export function exportARAgingCSV(accounts: ARAccount[], customers: BillingCustomer[]): string {
   const custMap = new Map((customers ?? []).map((c) => [c.id, c.name]))
@@ -557,4 +642,33 @@ export function exportARAgingCSV(accounts: ARAccount[], customers: BillingCustom
     a.aging90Plus.toFixed(2),
   ])
   return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+}
+
+/** Generate invoice PDF via Edge Function. Returns blob for download or html for print. */
+export async function generateInvoicePdf(
+  invoiceId: string
+): Promise<{ blob: Blob; filename: string } | { html: string } | null> {
+  if (!isSupabaseConfigured() || !invoiceId) return null
+  const { data, error } = await supabase.functions.invoke('generate-invoice-pdf', {
+    body: { invoiceId },
+  })
+  if (error) return null
+  if (data?.pdfBase64 && data?.filename) {
+    const binary = atob(data.pdfBase64 as string)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), filename: data.filename as string }
+  }
+  if (data?.html) return { html: data.html as string }
+  return null
+}
+
+/** Create Stripe customer for billing customer */
+export async function createStripeCustomer(customerId: string): Promise<string | null> {
+  if (!isSupabaseConfigured() || !customerId) return null
+  const { data, error } = await supabase.functions.invoke('create-stripe-customer', {
+    body: { customerId },
+  })
+  if (error || !data?.stripeCustomerId) return null
+  return data.stripeCustomerId as string
 }

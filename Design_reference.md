@@ -326,53 +326,25 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-typography, color palette, spacing
-- Use loading skeletons for data fetches; show skeletons in lists
-- Provide clear empty states for no data
-- Ensure consistent error messaging and retry options
-- Provide clear action affordances for security-sensitive operations (e.g., download, share, reissue)
+typography, spacing, color tokens, and components.
+- Use clear status indicators for invoices and payments; provide actionable controls (edit, pay, send, export).
+- Ensure forms have inline validation, helpful error messages, and accessible labels.
+- Support mobile responsiveness for field entry and quick actions on page_015, page_016, and page_017.
 
-Mandatory Coding Standards — Runtime Safety
-- Supabase query results: Always use nullish coalescing — const items = data ?? []
-- Array methods: Guard all calls
-  - (items ?? []).map(...)
-  - Array.isArray(items) ? items.map(...) : []
-- React useState for arrays/objects: useState<Type[]>([])
-- API response shapes: const list = Array.isArray(response?.data) ? response.data : []
-- Optional chaining: use obj?.property?.nested
-- Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
+## Mandatory Coding Standards — Runtime Safety
 
-Project Deliverables (Artifacts)
-- Frontend codebase:
-  - Pages: page_013 (Customer Portal), page_014 (Report PDF Viewer)
-  - Components: ReportList, InvoiceList, PDFViewer, AttachmentPanel, ShareLinkDialog, ReissueModal, UserManagement
-  - Hooks: useTenantData, useAudits, useShareLinks, useNotifications
-  - Utils: safeArrayMap, apiFetch with runtime guards, validation helpers
-- Backend services:
-  - REST/GraphQL endpoints as listed
-  - Data models and migrations for tenants, users, reports, invoices, attachments, share links, audit logs, invitations, support tickets
-  - PDF generation/streaming service
-  - Audit log ingestion and storage
-  - Notification integration
-- Tests:
-  - Unit tests for data shaping and guards
-  - Integration tests for tenant isolation
-  - End-to-end tests for portal flow (login, view, download, share, reissue, support)
-- Documentation:
-  - API contract docs
-  - Data model diagrams
-  - Deployment/runbooks for multi-tenant setup
+CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
 
-Notes for AI Development Tool
-- Generate strongly-typed TypeScript interfaces for all data models
-- Use robust error handling and meaningful messages
-- Provide exhaustive comments and JSDoc on public APIs
-- Ensure all code paths respect the runtime safety guidelines above
-- Include example data seeds for multi-tenant test environments
-- Include migration scripts to support new tables/fields
-- Produce sample configuration for environment variables (tenant schema, storage paths, PDF service endpoints)
+1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null when there are no rows.
+2. Array methods: Never call on a value that could be null/undefined/non-array. Guard with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
+3. React useState for arrays/objects: Initialize with correct type — useState<Type[]>([]) for arrays; never use useState() or useState(null).
+4. API response shapes: Validate — const list = Array.isArray(response?.data) ? response.data : [].
+5. Optional chaining: Use obj?.property?.nested when accessing nested API or DB data.
+6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}.
 
-By implementing the above, the AquaTrace Customer Portal will securely provide per-tenant access to historical reports and invoices, enable PDF viewing/downloading with secure sharing, support role-based user management, ensure robust auditing, and offer integrated support workflows.
+---
+
+If you need this prompt tailored to a specific tech stack (e.g., Next.js + Prisma + Supabase, or NestJS + PostgreSQL, or React Native mobile app with Expo), specify the stack and I will adjust the API contracts, data access patterns, and UI scaffolding accordingly while preserving the runtime safety rules.
 
 ## Implementation Notes
 

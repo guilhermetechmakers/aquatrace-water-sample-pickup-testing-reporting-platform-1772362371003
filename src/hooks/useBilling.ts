@@ -15,10 +15,16 @@ import {
   createInvoice,
   updateInvoiceStatus,
   recordPayment,
+  sendInvoice,
   fetchSubscriptions,
   createSubscription,
   fetchARAgingSummary,
   fetchARAccounts,
+  fetchBillingSettings,
+  saveBillingSettings,
+  triggerARReminders,
+  generateInvoicePdf,
+  createStripeCustomer,
 } from '@/api/billing'
 import type {
   CustomerCreatePayload,
@@ -35,6 +41,7 @@ const BILLING_KEYS = {
   subscriptions: (customerId?: string) => ['billing', 'subscriptions', customerId ?? ''] as const,
   arAging: ['billing', 'ar-aging'] as const,
   arAccounts: ['billing', 'ar-accounts'] as const,
+  settings: ['billing', 'settings'] as const,
 }
 
 /** List customers with billing details */
@@ -187,5 +194,77 @@ export function useARAccounts() {
   return useQuery({
     queryKey: BILLING_KEYS.arAccounts,
     queryFn: fetchARAccounts,
+  })
+}
+
+/** Send invoice mutation */
+export function useSendInvoice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => sendInvoice(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.invoices({}) })
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.invoice(id) })
+      toast.success('Invoice sent')
+    },
+    onError: (err: Error) => toast.error(err?.message ?? 'Failed to send invoice'),
+  })
+}
+
+/** Billing settings */
+export function useBillingSettings() {
+  return useQuery({
+    queryKey: BILLING_KEYS.settings,
+    queryFn: fetchBillingSettings,
+  })
+}
+
+/** Save billing settings mutation */
+export function useSaveBillingSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: { currency?: string; defaultTaxRate?: number; remindersCadence?: string }) =>
+      saveBillingSettings(settings),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.settings })
+      toast.success('Settings saved')
+    },
+    onError: (err: Error) => toast.error(err?.message ?? 'Failed to save settings'),
+  })
+}
+
+/** Trigger AR reminders mutation */
+export function useTriggerARReminders() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => triggerARReminders(),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.arAging })
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.arAccounts })
+      toast.success(`Reminders queued for ${data?.sent ?? 0} overdue invoice(s)`)
+    },
+    onError: (err: Error) => toast.error(err?.message ?? 'Failed to trigger reminders'),
+  })
+}
+
+/** Generate invoice PDF mutation */
+export function useGenerateInvoicePdf() {
+  return useMutation({
+    mutationFn: (invoiceId: string) => generateInvoicePdf(invoiceId),
+    onError: (err: Error) => toast.error(err?.message ?? 'Failed to generate PDF'),
+  })
+}
+
+/** Create Stripe customer mutation */
+export function useCreateStripeCustomer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (customerId: string) => createStripeCustomer(customerId),
+    onSuccess: (_, customerId) => {
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.customer(customerId) })
+      qc.invalidateQueries({ queryKey: BILLING_KEYS.customers })
+      toast.success('Stripe customer created')
+    },
+    onError: (err: Error) => toast.error(err?.message ?? 'Failed to create Stripe customer'),
   })
 }

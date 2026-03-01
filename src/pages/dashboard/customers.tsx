@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,10 +23,12 @@ import {
   useUpdateBillingCustomer,
   useCreateInvoice,
   useCreateSubscription,
+  useCreateStripeCustomer,
 } from '@/hooks/useBilling'
 import type { BillingCustomer } from '@/types/billing'
 
 export function CustomersPage() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -47,6 +50,7 @@ export function CustomersPage() {
   const updateCustomer = useUpdateBillingCustomer()
   const createInvoice = useCreateInvoice()
   const createSubscription = useCreateSubscription()
+  const createStripeCustomer = useCreateStripeCustomer()
 
   const customers = Array.isArray(customersData?.customers) ? customersData!.customers : []
   const invoices = Array.isArray(invoicesData?.invoices) ? invoicesData!.invoices : []
@@ -158,7 +162,9 @@ export function CustomersPage() {
                 recentInvoices={invoices}
                 isLoading={customerLoading}
                 onEdit={() => customer && handleEditCustomer(customer)}
-                onViewInvoices={() => {}}
+                onViewInvoices={() => selectedId && navigate(`/dashboard/invoicing?customer=${selectedId}`)}
+                onLinkStripe={(cid) => createStripeCustomer.mutate(cid)}
+                isLinkingStripe={createStripeCustomer.isPending}
               />
               <SubscriptionManager
                 customerId={selectedId}

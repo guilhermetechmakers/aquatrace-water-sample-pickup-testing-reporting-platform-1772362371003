@@ -2,7 +2,7 @@
  * CustomerProfileCard - Shows customer details, Stripe customer ID, active subscriptions, invoice history, billing contact
  */
 
-import { User, Mail, CreditCard, FileText, MapPin } from 'lucide-react'
+import { User, Mail, CreditCard, FileText, MapPin, Link2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -15,6 +15,8 @@ export interface CustomerProfileCardProps {
   isLoading?: boolean
   onEdit?: () => void
   onViewInvoices?: () => void
+  onLinkStripe?: (customerId: string) => void
+  isLinkingStripe?: boolean
 }
 
 function formatCurrency(value: number): string {
@@ -32,6 +34,8 @@ export function CustomerProfileCard({
   isLoading = false,
   onEdit,
   onViewInvoices,
+  onLinkStripe,
+  isLinkingStripe = false,
 }: CustomerProfileCardProps) {
   const subs = Array.isArray(subscriptions) ? subscriptions : []
   const invs = Array.isArray(recentInvoices) ? recentInvoices : []
@@ -103,11 +107,21 @@ export function CustomerProfileCard({
               {addrLine}
             </p>
           )}
-          {customer.stripeCustomerId && (
+          {customer.stripeCustomerId ? (
             <p className="text-sm flex items-center gap-2 font-mono text-muted-foreground">
               <CreditCard className="h-4 w-4" />
               {customer.stripeCustomerId}
             </p>
+          ) : onLinkStripe && (
+            <button
+              type="button"
+              onClick={() => onLinkStripe(customer.id)}
+              disabled={isLinkingStripe}
+              className="text-sm flex items-center gap-2 text-primary hover:underline"
+            >
+              <Link2 className="h-4 w-4" />
+              {isLinkingStripe ? 'Linking...' : 'Link Stripe Customer'}
+            </button>
           )}
           <p className="text-sm text-muted-foreground">Currency: {customer.currency ?? 'USD'}</p>
         </div>

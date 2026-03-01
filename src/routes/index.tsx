@@ -27,6 +27,7 @@ import { ReportsPage } from '@/pages/dashboard/reports'
 import { DistributionPage } from '@/pages/dashboard/distribution'
 import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
+import { InvoiceDetailPage } from '@/pages/dashboard/invoice-detail'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
 import { ProfilePage } from '@/pages/dashboard/profile'
 import { AdminPage } from '@/pages/dashboard/admin'
@@ -151,7 +152,14 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'customers', element: <CustomersPage /> },
-      { path: 'invoicing', element: <InvoicingPage /> },
+      {
+        path: 'invoicing',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <InvoicingPage /> },
+          { path: ':id', element: <InvoiceDetailPage /> },
+        ],
+      },
       { path: 'analytics', element: <AnalyticsPage /> },
       {
         path: 'admin',

@@ -3,8 +3,14 @@
  */
 
 import { AdminSettingsPanel } from '@/components/billing'
+import { useBillingSettings, useSaveBillingSettings } from '@/hooks/useBilling'
 
 export function AdminBillingPage() {
+  const { data: settings, isLoading } = useBillingSettings()
+  const saveSettings = useSaveBillingSettings()
+
+  const s = settings ?? { currency: 'USD', defaultTaxRate: 0, remindersCadence: '7,14,30', webhookConfigured: false }
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -14,10 +20,12 @@ export function AdminBillingPage() {
         </p>
       </div>
       <AdminSettingsPanel
-        currency="USD"
-        defaultTaxRate={0}
-        remindersCadence="7,14,30"
-        webhookConfigured={false}
+        currency={s.currency}
+        defaultTaxRate={s.defaultTaxRate}
+        remindersCadence={s.remindersCadence}
+        webhookConfigured={s.webhookConfigured}
+        isLoading={isLoading}
+        onSave={(opts) => saveSettings.mutate(opts)}
       />
     </div>
   )

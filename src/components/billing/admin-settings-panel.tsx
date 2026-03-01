@@ -2,6 +2,7 @@
  * AdminSettingsPanel - Stripe webhook configs, tax settings, currency, reminders cadence
  */
 
+import { useState, useEffect } from 'react'
 import { Settings, Webhook, Percent, DollarSign, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +32,15 @@ export function AdminSettingsPanel({
   webhookConfigured = false,
   onSave,
 }: AdminSettingsPanelProps) {
+  const [localCurrency, setLocalCurrency] = useState(currency)
+  const [localTaxRate, setLocalTaxRate] = useState(String(defaultTaxRate))
+  const [localReminders, setLocalReminders] = useState(remindersCadence)
+
+  useEffect(() => {
+    setLocalCurrency(currency ?? 'USD')
+    setLocalTaxRate(String(defaultTaxRate ?? 0))
+    setLocalReminders(remindersCadence ?? '7,14,30')
+  }, [currency, defaultTaxRate, remindersCadence])
   if (isLoading) {
     return (
       <Card>
@@ -83,9 +93,10 @@ export function AdminSettingsPanel({
             </Label>
             <Input
               id="currency"
-              value={currency}
-              readOnly
-              className="mt-1 bg-muted"
+              value={localCurrency}
+              onChange={(e) => setLocalCurrency(e.target.value)}
+              placeholder="USD"
+              className="mt-1"
             />
           </div>
           <div>
@@ -99,9 +110,9 @@ export function AdminSettingsPanel({
               min={0}
               max={100}
               step={0.1}
-              value={defaultTaxRate}
-              readOnly
-              className="mt-1 bg-muted"
+              value={localTaxRate}
+              onChange={(e) => setLocalTaxRate(e.target.value)}
+              className="mt-1"
             />
           </div>
         </div>
@@ -114,9 +125,9 @@ export function AdminSettingsPanel({
           <Input
             id="reminders"
             placeholder="7,14,30"
-            value={remindersCadence}
-            readOnly
-            className="mt-1 bg-muted"
+            value={localReminders}
+            onChange={(e) => setLocalReminders(e.target.value)}
+            className="mt-1"
           />
           <p className="text-xs text-muted-foreground mt-1">
             Comma-separated days after due date to send reminders
@@ -124,7 +135,15 @@ export function AdminSettingsPanel({
         </div>
 
         {onSave && (
-          <Button onClick={() => onSave({ currency, defaultTaxRate, remindersCadence })}>
+          <Button
+            onClick={() =>
+              onSave({
+                currency: localCurrency || undefined,
+                defaultTaxRate: parseFloat(localTaxRate) || 0,
+                remindersCadence: localReminders || undefined,
+              })
+            }
+          >
             Save Settings
           </Button>
         )}

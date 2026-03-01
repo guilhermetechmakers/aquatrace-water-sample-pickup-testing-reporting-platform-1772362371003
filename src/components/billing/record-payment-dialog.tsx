@@ -15,13 +15,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { Invoice } from '@/types/billing'
+import type { Invoice, PaymentMethod } from '@/types/billing'
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'card', label: 'Card' },
+  { value: 'bank', label: 'Bank Transfer' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'check', label: 'Check' },
+  { value: 'other', label: 'Other' },
+]
 
 export interface RecordPaymentDialogProps {
   invoice: Invoice | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onRecord: (invoiceId: string, amount: number) => void
+  onRecord: (invoiceId: string, amount: number, method?: PaymentMethod) => void
   isLoading?: boolean
 }
 
@@ -41,6 +49,7 @@ export function RecordPaymentDialog({
   isLoading = false,
 }: RecordPaymentDialogProps) {
   const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState<PaymentMethod>('card')
   const total = typeof invoice?.totalAmount === 'number' ? invoice.totalAmount : 0
   const paidTotal = (invoice?.payments ?? []).reduce((sum, p) => sum + (p.amount ?? 0), 0)
   const balanceDue = total - paidTotal
@@ -49,13 +58,15 @@ export function RecordPaymentDialog({
     e.preventDefault()
     const amt = parseFloat(amount)
     if (!invoice || isNaN(amt) || amt <= 0) return
-    onRecord(invoice.id, amt)
+    onRecord(invoice.id, amt, method)
     setAmount('')
+    setMethod('card')
     onOpenChange(false)
   }
 
   const handleClose = () => {
     setAmount('')
+    setMethod('card')
     onOpenChange(false)
   }
 
@@ -79,6 +90,21 @@ export function RecordPaymentDialog({
         </DialogHeader>
         {invoice && (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="method">Payment Method</Label>
+              <select
+                id="method"
+                value={method}
+                onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {(PAYMENT_METHODS ?? []).map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <Label htmlFor="amount">Amount ($)</Label>
               <Input
