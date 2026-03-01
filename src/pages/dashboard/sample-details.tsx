@@ -12,32 +12,81 @@ import {
   ChevronUp,
   History,
   FileText,
+  Send,
+  CheckCircle,
+  Archive,
+  XCircle,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   usePickupSample,
   usePickupPhotos,
   useSyncPickups,
   usePickupAuditTrail,
   usePickupStatusHistory,
+  useUpdatePickupSample,
 } from '@/hooks/usePickupSamples'
 import { useLabResults } from '@/hooks/useLabResults'
+import { useAuth } from '@/contexts/auth-context'
+import { useSites } from '@/hooks/useSites'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import {
+  getAllowedActions,
+  getNextState,
+  type WorkflowAction,
+} from '@/lib/sample-workflow'
 import type { AuditTrailEntry, StatusHistoryEntry } from '@/types/pickup-sample'
+
+function getStatusBadgeVariant(status: string): 'success' | 'rejected' | 'accent' | 'pending' {
+  switch (status) {
+    case 'Synced':
+    case 'LabApproved':
+    case 'Archived':
+      return 'success'
+    case 'Rejected':
+      return 'rejected'
+    case 'Submitted':
+    case 'InLab':
+      return 'accent'
+    default:
+      return 'pending'
+  }
+}
 
 export function SampleDetailsPage() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const { data: pickup, isLoading, refetch } = usePickupSample(id ?? null)
   const { data: photos = [] } = usePickupPhotos(id ?? null)
   const { data: auditTrail = [] } = usePickupAuditTrail(id ?? null)
   const { data: statusHistory = [] } = usePickupStatusHistory(id ?? null)
   const { data: labResults = [] } = useLabResults(pickup?.serverId ?? undefined)
+  const { data: sites = [] } = useSites()
   const syncMutation = useSyncPickups()
+  const updateMutation = useUpdatePickupSample()
   const [expandedAudit, setExpandedAudit] = useState(false)
   const [expandedHistory, setExpandedHistory] = useState(false)
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null)
+
+  const role = user?.role ?? 'TECHNICIAN'
+  const allowedActions = useMemo(
+    () => (pickup ? getAllowedActions(pickup.status ?? 'Pending', role) : []),
+    [pickup, role]
+  )
+  const siteName = useMemo(
+    () => (pickup?.siteId ? (sites ?? []).find((s) => s.id === pickup.siteId)?.name : null),
+    [pickup?.siteId, sites]
+  )
 
   const displayAudit = useMemo(() => {
     const audit = Array.isArray(auditTrail) ? auditTrail : []
@@ -93,6 +142,47 @@ export function SampleDetailsPage() {
     })
   }
 
+  const getActionLabel = (a: WorkflowAction): string => {
+    const labels: Record<WorkflowAction, string> = {
+      submit: 'Submitted',
+      send_to_lab: 'Sent to Lab',
+      approve_results: 'Results Approved',
+      archive: 'Archived',
+      reject: 'Rejected',
+    }
+    return labels[a] ?? a
+  }
+
+  const handleWorkflowAction = (action: WorkflowAction) => {
+    if (!pickup || !id) return
+    const nextStatus = getNextState(pickup.status ?? 'Pending', action, role)
+    if (!nextStatus) {
+      toast.error('Invalid transition')
+      return
+    }
+    const fromState = pickup.status ?? 'Pending'
+    updateMutation.mutate(
+      {
+        id,
+        updates: { status: nextStatus },
+        auditMetadata: {
+          fromState,
+          toState: nextStatus,
+          action: getActionLabel(action),
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Status updated to ${nextStatus}`)
+          refetch()
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to update')
+        },
+      }
+    )
+  }
+
   if (!id) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -133,20 +223,70 @@ export function SampleDetailsPage() {
             Back
           </Link>
         </Button>
-        <div className="flex items-center gap-2">
-          <Badge
-            variant={
-              pickup.status === 'Synced'
-                ? 'success'
-                : pickup.status === 'Rejected'
-                  ? 'rejected'
-                  : pickup.status === 'Submitted'
-                    ? 'accent'
-                    : 'pending'
-            }
-          >
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={getStatusBadgeVariant(pickup.status ?? 'Pending')}>
             {pickup.status}
           </Badge>
+          {allowedActions.length > 0 && (
+            <div className="flex gap-1">
+              {allowedActions.includes('submit') && (
+                <Button
+                  size="sm"
+                  onClick={() => handleWorkflowAction('submit')}
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 mr-1" />
+                  )}
+                  Submit
+                </Button>
+              )}
+              {allowedActions.includes('send_to_lab') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleWorkflowAction('send_to_lab')}
+                  disabled={updateMutation.isPending}
+                >
+                  Submit for Lab
+                </Button>
+              )}
+              {allowedActions.includes('approve_results') && (
+                <Button
+                  size="sm"
+                  onClick={() => handleWorkflowAction('approve_results')}
+                  disabled={updateMutation.isPending}
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Approve Results
+                </Button>
+              )}
+              {allowedActions.includes('archive') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleWorkflowAction('archive')}
+                  disabled={updateMutation.isPending}
+                >
+                  <Archive className="h-4 w-4 mr-1" />
+                  Archive
+                </Button>
+              )}
+              {allowedActions.includes('reject') && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleWorkflowAction('reject')}
+                  disabled={updateMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  Reject
+                </Button>
+              )}
+            </div>
+          )}
           {!pickup.synced && (
             <Button
               variant="outline"
@@ -167,10 +307,13 @@ export function SampleDetailsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-mono">{pickup.vialId || pickup.id.slice(0, 12)}</CardTitle>
+          <CardTitle className="font-mono">
+            {pickup.sampleId ?? pickup.vialId ?? pickup.id.slice(0, 12)}
+          </CardTitle>
           <CardDescription>
-            {pickup.location ?? `Sample ${pickup.vialId}`} ·{' '}
+            {pickup.pickupLocationName ?? pickup.location ?? siteName ?? `Sample ${pickup.vialId}`} ·{' '}
             {format(new Date(pickup.timestamp), 'MMM d, yyyy HH:mm')}
+            {pickup.vialCount != null && pickup.vialCount > 1 && ` · ${pickup.vialCount} vials`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -187,9 +330,11 @@ export function SampleDetailsPage() {
             <div className="flex items-center gap-3 rounded-lg border p-4">
               <Droplets className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-sm text-muted-foreground">Chlorine (mg/L)</p>
+                <p className="text-sm text-muted-foreground">Chlorine (ppm)</p>
                 <p className="text-xl font-semibold">
-                  {pickup.chlorine != null ? String(pickup.chlorine) : '—'}
+                  {(pickup.chlorineReading ?? pickup.chlorine) != null
+                    ? String(pickup.chlorineReading ?? pickup.chlorine)
+                    : '—'}
                 </p>
               </div>
             </div>
@@ -212,9 +357,17 @@ export function SampleDetailsPage() {
             </div>
           </div>
 
-          <div>
-            <p className="text-sm font-medium">Volume</p>
-            <p className="text-muted-foreground">{pickup.volume} mL</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-sm font-medium">Volume</p>
+              <p className="text-muted-foreground">{pickup.volume} mL</p>
+            </div>
+            {siteName && (
+              <div>
+                <p className="text-sm font-medium">Site</p>
+                <p className="text-muted-foreground">{siteName}</p>
+              </div>
+            )}
           </div>
 
           {pickup.customerSiteNotes && (
@@ -233,28 +386,60 @@ export function SampleDetailsPage() {
               <Camera className="h-5 w-5" />
               Photos
             </CardTitle>
+            <CardDescription>
+              Click to view full size
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-4">
-              {displayPhotos.map((ph) => (
-                <a
-                  key={ph.id}
-                  href={ph.serverUrl ?? ph.localUri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <img
-                    src={ph.serverUrl ?? ph.localUri}
-                    alt="Sample"
-                    className="h-24 w-24 rounded-lg object-cover border"
-                  />
-                </a>
-              ))}
+              {displayPhotos.map((ph) => {
+                const src = ph.serverUrl ?? ph.localUri
+                return (
+                  <button
+                    key={ph.id}
+                    type="button"
+                    onClick={() => setLightboxPhoto(src)}
+                    className="block rounded-lg border overflow-hidden transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                    aria-label="View photo full size"
+                  >
+                    <img
+                      src={src}
+                      alt="Sample"
+                      className="h-24 w-24 object-cover"
+                    />
+                  </button>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={Boolean(lightboxPhoto)} onOpenChange={(o) => !o && setLightboxPhoto(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="sr-only">Photo</DialogTitle>
+          </DialogHeader>
+          <div className="relative p-4 pt-2">
+            {lightboxPhoto && (
+              <img
+                src={lightboxPhoto}
+                alt="Sample full size"
+                className="w-full max-h-[80vh] object-contain rounded-lg"
+              />
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-6 top-6 rounded-full"
+              onClick={() => setLightboxPhoto(null)}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {Array.isArray(labResults) && labResults.length > 0 && (
         <Card>
@@ -332,17 +517,7 @@ export function SampleDetailsPage() {
                   className="rounded-lg border p-4 transition-colors hover:bg-muted/30"
                 >
                   <div className="flex items-center justify-between">
-                    <Badge
-                      variant={
-                        entry.status === 'Synced'
-                          ? 'success'
-                          : entry.status === 'Rejected'
-                            ? 'rejected'
-                            : entry.status === 'Submitted'
-                              ? 'accent'
-                              : 'pending'
-                      }
-                    >
+                    <Badge variant={getStatusBadgeVariant(entry.status)}>
                       {entry.status}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
@@ -395,6 +570,20 @@ export function SampleDetailsPage() {
                       {format(new Date(entry.timestamp), 'MMM d, yyyy HH:mm')}
                     </span>
                   </div>
+                  {(entry.fromState != null || entry.toState != null) && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {entry.fromState && entry.toState
+                        ? `${entry.fromState} → ${entry.toState}`
+                        : entry.toState
+                          ? `→ ${entry.toState}`
+                          : entry.fromState
+                            ? `${entry.fromState} →`
+                            : null}
+                    </p>
+                  )}
+                  {entry.notes && (
+                    <p className="mt-1 text-sm text-muted-foreground">{entry.notes}</p>
+                  )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     By user: {entry.byUserId.slice(0, 8)}…
                   </p>

@@ -25,6 +25,8 @@ function openDB(): Promise<IDBDatabase> {
         pickupsStore.createIndex('technicianId', 'technicianId', { unique: false })
         pickupsStore.createIndex('status', 'status', { unique: false })
         pickupsStore.createIndex('vialId', 'vialId', { unique: false })
+        pickupsStore.createIndex('siteId', 'siteId', { unique: false })
+        pickupsStore.createIndex('sampleId', 'sampleId', { unique: false })
         pickupsStore.createIndex('updatedAt', 'updatedAt', { unique: false })
       }
       if (!db.objectStoreNames.contains(STORE_PHOTOS)) {

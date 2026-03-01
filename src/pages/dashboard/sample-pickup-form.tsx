@@ -1,9 +1,15 @@
+/**
+ * Sample Pickup Form (Technician)
+ * Log each 100 mL vial pickup onsite with vialCount, pH, chlorineReading, siteId, photos, GPS
+ * Sample Management Workflow - initial state: Pending Pickup
+ */
+
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Camera, MapPin, ScanBarcode, Loader2 } from 'lucide-react'
+import { Camera, MapPin, ScanBarcode, Loader2, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,23 +17,31 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
 import { useCreatePickupSample, useAddPickupPhoto } from '@/hooks/usePickupSamples'
+import { useSites } from '@/hooks/useSites'
 import { generateId } from '@/lib/offline-storage'
 import { BarcodeScanner } from '@/components/technician/barcode-scanner'
 import { cn } from '@/lib/utils'
 
 const schema = z.object({
   vialId: z.string().min(1, 'Vial ID is required'),
+  siteId: z.string().min(1, 'Site is required'),
+  vialCount: z
+    .number({ invalid_type_error: 'Enter a number' })
+    .int('Must be a whole number')
+    .min(1, 'Vial count must be at least 1'),
   pH: z
     .number({ invalid_type_error: 'Enter a number' })
     .min(0, 'pH must be 0–14')
     .max(14, 'pH must be 0–14')
     .nullable()
     .optional(),
-  chlorine: z
+  chlorineReading: z
     .number({ invalid_type_error: 'Enter a number' })
-    .min(0, 'Chlorine must be ≥ 0')
+    .min(0, 'Chlorine must be 0–20 ppm')
+    .max(20, 'Chlorine must be 0–20 ppm')
     .nullable()
     .optional(),
+  pickupLocationName: z.string().optional(),
   customerSiteNotes: z.string().optional(),
 })
 
@@ -55,6 +69,10 @@ function getGeoLocation(): Promise<{
   })
 }
 
+function generateSampleId(): string {
+  return `SMP-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+}
+
 export function SamplePickupFormPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -67,24 +85,33 @@ export function SamplePickupFormPage() {
     accuracy: number
   } | null>(null)
   const [isCapturingGps, setIsCapturingGps] = useState(false)
+  const [sampleId] = useState(() => generateSampleId())
 
   const createMutation = useCreatePickupSample()
   const addPhotoMutation = useAddPickupPhoto()
+  const { data: sites = [], isLoading: sitesLoading } = useSites()
 
   const {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       vialId: '',
+      siteId: '',
+      vialCount: 1,
       pH: undefined,
-      chlorine: undefined,
+      chlorineReading: undefined,
+      pickupLocationName: '',
       customerSiteNotes: '',
     },
   })
+
+  const selectedSiteId = watch('siteId')
+  const selectedSite = Array.isArray(sites) ? (sites ?? []).find((s) => s.id === selectedSiteId) : null
 
   const handleScan = (id: string) => {
     setValue('vialId', id)
@@ -136,40 +163,41 @@ export function SamplePickupFormPage() {
       return
     }
 
-    if (!gps) {
-      toast.error('Please capture GPS location')
-      return
-    }
-
-    const pHNum =
-      data.pH != null && data.pH !== undefined
-        ? Number(data.pH)
-        : null
+    const pHNum = data.pH != null && data.pH !== undefined ? Number(data.pH) : null
     const chlorineNum =
-      data.chlorine != null && data.chlorine !== undefined
-        ? Number(data.chlorine)
+      data.chlorineReading != null && data.chlorineReading !== undefined
+        ? Number(data.chlorineReading)
         : null
 
-    if (pHNum == null || chlorineNum == null) {
-      toast.error('Please enter pH and Chlorine readings')
+    if (action === 'submit' && (pHNum == null || chlorineNum == null)) {
+      toast.error('Please enter pH and Chlorine readings for submission')
       return
     }
+
+    const siteName = selectedSite?.name ?? 'Site'
+    const location = data.pickupLocationName?.trim() || siteName
 
     const now = new Date().toISOString()
     createMutation.mutate(
       {
         vialId: data.vialId.trim(),
+        siteId: data.siteId.trim() || null,
+        vialCount: data.vialCount ?? 1,
+        sampleId,
         pH: pHNum,
         chlorine: chlorineNum,
+        chlorineReading: chlorineNum,
         volume: 100,
         timestamp: now,
-        gpsLat: gps.lat,
-        gpsLon: gps.lng,
-        gpsAccuracy: gps.accuracy,
+        gpsLat: gps?.lat ?? null,
+        gpsLon: gps?.lng ?? null,
+        gpsAccuracy: gps?.accuracy ?? null,
         customerSiteNotes: data.customerSiteNotes?.trim() || null,
-        location: `Sample ${data.vialId}`,
+        pickupLocationName: data.pickupLocationName?.trim() || null,
+        location,
         photos: [],
-        status: action === 'submit' ? 'Submitted' : 'Pending',
+        status: action === 'submit' ? 'Submitted' : 'PendingPickup',
+        archived: false,
       },
       {
         onSuccess: async (pickup) => {
@@ -203,7 +231,7 @@ export function SamplePickupFormPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">New Sample Pickup</h1>
         <p className="mt-1 text-muted-foreground">
-          Capture vial ID, readings, GPS, and photos
+          Log each 100 mL vial pickup with site, readings, GPS, and photos
         </p>
       </div>
 
@@ -220,10 +248,71 @@ export function SamplePickupFormPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Vial ID</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Site & Sample
+            </CardTitle>
             <CardDescription>
-              Scan barcode or enter manually
+              Select site (required) and enter vial count. Sample ID is auto-generated.
             </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="siteId">Site *</Label>
+              <select
+                id="siteId"
+                {...register('siteId')}
+                disabled={sitesLoading}
+                className={cn(
+                  'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
+                  errors.siteId && 'border-destructive'
+                )}
+              >
+                <option value="">Select site...</option>
+                {(sites ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              {errors.siteId && (
+                <p className="text-sm text-destructive">{errors.siteId.message}</p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="vialCount">Vial Count</Label>
+                <Input
+                  id="vialCount"
+                  type="number"
+                  min={1}
+                  {...register('vialCount', { valueAsNumber: true })}
+                  className={cn(errors.vialCount && 'border-destructive')}
+                />
+                {errors.vialCount && (
+                  <p className="text-sm text-destructive">{errors.vialCount.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Sample ID</Label>
+                <Input value={sampleId} readOnly className="font-mono text-sm bg-muted" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pickupLocationName">Pickup Location Name (optional)</Label>
+              <Input
+                id="pickupLocationName"
+                {...register('pickupLocationName')}
+                placeholder="e.g. Main entrance, Room 101"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Vial ID</CardTitle>
+            <CardDescription>Scan barcode or enter manually</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Input
@@ -249,7 +338,7 @@ export function SamplePickupFormPage() {
           <CardHeader>
             <CardTitle>Readings</CardTitle>
             <CardDescription>
-              pH (0–14) and Chlorine (mg/L)
+              pH (0–14) and Chlorine (0–20 ppm). Required for submission.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -258,7 +347,7 @@ export function SamplePickupFormPage() {
               <Input
                 id="ph"
                 type="number"
-                step="0.1"
+                step="0.01"
                 min="0"
                 max="14"
                 {...register('pH', { valueAsNumber: true })}
@@ -270,18 +359,19 @@ export function SamplePickupFormPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="chlorine">Chlorine (mg/L)</Label>
+              <Label htmlFor="chlorineReading">Chlorine (ppm)</Label>
               <Input
-                id="chlorine"
+                id="chlorineReading"
                 type="number"
-                step="0.1"
+                step="0.01"
                 min="0"
-                {...register('chlorine', { valueAsNumber: true })}
-                className={cn(errors.chlorine && 'border-destructive')}
+                max="20"
+                {...register('chlorineReading', { valueAsNumber: true })}
+                className={cn(errors.chlorineReading && 'border-destructive')}
                 placeholder="1.5"
               />
-              {errors.chlorine && (
-                <p className="text-sm text-destructive">{errors.chlorine.message}</p>
+              {errors.chlorineReading && (
+                <p className="text-sm text-destructive">{errors.chlorineReading.message}</p>
               )}
             </div>
           </CardContent>
@@ -291,7 +381,7 @@ export function SamplePickupFormPage() {
           <CardHeader>
             <CardTitle>GPS Location</CardTitle>
             <CardDescription>
-              Capture current location for sample site
+              Capture current location (optional if not available). Recommended for chain of custody.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -319,9 +409,7 @@ export function SamplePickupFormPage() {
         <Card>
           <CardHeader>
             <CardTitle>Photos</CardTitle>
-            <CardDescription>
-              At least 1 photo recommended
-            </CardDescription>
+            <CardDescription>At least 1 photo recommended for submission</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <input
@@ -363,9 +451,7 @@ export function SamplePickupFormPage() {
         <Card>
           <CardHeader>
             <CardTitle>Site Notes</CardTitle>
-            <CardDescription>
-              Customer or site notes (optional)
-            </CardDescription>
+            <CardDescription>Customer or site notes (optional)</CardDescription>
           </CardHeader>
           <CardContent>
             <Input

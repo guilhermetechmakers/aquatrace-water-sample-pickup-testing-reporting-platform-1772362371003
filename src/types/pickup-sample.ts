@@ -1,16 +1,40 @@
 /**
  * Technician GPS Pickup & Offline Capture - Data Models
- * Status: Pending (draft), Submitted (sent to server), Synced (confirmed), Rejected
+ * Sample Management Workflow states: Draft, PendingPickup, Submitted, InLab, LabApproved, Archived, Rejected
+ * Legacy: Pending (draft), Submitted (sent to server), Synced (confirmed), Rejected
  */
 
-export type SamplePickupStatus = 'Pending' | 'Submitted' | 'Synced' | 'Rejected'
+export type SamplePickupStatus =
+  | 'Draft'
+  | 'PendingPickup'
+  | 'Pending'
+  | 'Submitted'
+  | 'Synced'
+  | 'InLab'
+  | 'LabApproved'
+  | 'Archived'
+  | 'Rejected'
+
+export interface Site {
+  id: string
+  name: string
+  address: string | null
+  customerId: string | null
+  lat: number | null
+  lon: number | null
+  metadata: Record<string, unknown>
+}
 
 export interface SamplePickup {
   id: string
   serverId: string | null
   vialId: string
+  sampleId: string | null
+  siteId: string | null
+  vialCount: number
   pH: number | null
   chlorine: number | null
+  chlorineReading: number | null
   volume: number
   timestamp: string
   gpsLat: number | null
@@ -18,10 +42,12 @@ export interface SamplePickup {
   gpsAccuracy: number | null
   technicianId: string
   customerSiteNotes: string | null
+  pickupLocationName: string | null
   location: string
   photos: SamplePhoto[]
   status: SamplePickupStatus
   synced: boolean
+  archived: boolean
   createdAt: string
   updatedAt: string
 }
@@ -50,6 +76,9 @@ export interface AuditTrailEntry {
   action: string
   byUserId: string
   timestamp: string
+  fromState?: string | null
+  toState?: string | null
+  notes?: string | null
 }
 
 export interface StatusHistoryEntry {
@@ -82,17 +111,23 @@ export type UpdateSamplePickupInput = Partial<
   Pick<
     SamplePickup,
     | 'vialId'
+    | 'sampleId'
+    | 'siteId'
+    | 'vialCount'
     | 'pH'
     | 'chlorine'
+    | 'chlorineReading'
     | 'volume'
     | 'timestamp'
     | 'gpsLat'
     | 'gpsLon'
     | 'gpsAccuracy'
     | 'customerSiteNotes'
+    | 'pickupLocationName'
     | 'location'
     | 'photos'
     | 'status'
     | 'synced'
+    | 'archived'
   >
 >

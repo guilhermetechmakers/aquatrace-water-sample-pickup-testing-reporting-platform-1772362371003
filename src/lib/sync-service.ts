@@ -47,20 +47,42 @@ const isSupabaseConfigured = () =>
   Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
 
 function toServerPickup(p: SamplePickup): Record<string, unknown> {
+  const status = mapStatusToServer(p.status)
   return {
     technician_id: p.technicianId,
     location: p.location || 'Site',
     vial_id: p.vialId,
+    sample_id: p.sampleId ?? undefined,
+    site_id: p.siteId ?? undefined,
+    vial_count: p.vialCount ?? 1,
     gps_lat: p.gpsLat,
     gps_lng: p.gpsLon,
     gps_accuracy: p.gpsAccuracy,
-    readings: { pH: p.pH, chlorine: p.chlorine },
+    readings: { pH: p.pH, chlorine: p.chlorine ?? p.chlorineReading },
+    chlorine_reading: p.chlorineReading ?? p.chlorine,
     volume: p.volume,
     sample_timestamp: p.timestamp,
     customer_site_notes: p.customerSiteNotes,
-    status: p.status.toLowerCase(),
+    pickup_location_name: p.pickupLocationName ?? undefined,
+    status,
+    archived: p.archived ?? false,
     photos: (p.photos ?? []).map((ph) => ph.serverUrl ?? ph.localUri).filter(Boolean),
   }
+}
+
+function mapStatusToServer(s: SamplePickup['status']): string {
+  const map: Record<string, string> = {
+    Draft: 'draft',
+    PendingPickup: 'pending_pickup',
+    Pending: 'pending',
+    Submitted: 'submitted',
+    Synced: 'synced',
+    InLab: 'in_lab',
+    LabApproved: 'lab_approved',
+    Archived: 'archived',
+    Rejected: 'rejected',
+  }
+  return map[s] ?? 'pending'
 }
 
 export interface SyncResult {
@@ -214,12 +236,17 @@ export async function fetchServerPickupsAndMerge(
     const r = row as Record<string, unknown>
     const readings = (r.readings as Record<string, unknown>) ?? {}
     const photos = Array.isArray(r.photos) ? (r.photos as string[]) : []
+    const chlorineVal = (readings.chlorine as number) ?? (r.chlorine_reading as number) ?? null
     const pickup: SamplePickup = {
       id: (r.id as string) ?? '',
       serverId: r.id as string,
       vialId: (r.vial_id as string) ?? '',
+      sampleId: (r.sample_id as string) ?? null,
+      siteId: (r.site_id as string) ?? null,
+      vialCount: (r.vial_count as number) ?? 1,
       pH: (readings.pH as number) ?? null,
-      chlorine: (readings.chlorine as number) ?? null,
+      chlorine: chlorineVal,
+      chlorineReading: chlorineVal,
       volume: (r.volume as number) ?? 100,
       timestamp: (r.sample_timestamp as string) ?? (r.updated_at as string) ?? new Date().toISOString(),
       gpsLat: (r.gps_lat as number) ?? null,
@@ -227,6 +254,7 @@ export async function fetchServerPickupsAndMerge(
       gpsAccuracy: (r.gps_accuracy as number) ?? null,
       technicianId: (r.technician_id as string) ?? technicianId,
       customerSiteNotes: (r.customer_site_notes as string) ?? null,
+      pickupLocationName: (r.pickup_location_name as string) ?? null,
       location: (r.location as string) ?? '',
       photos: photos.map((url, i) => ({
         id: `photo-${r.id}-${i}`,
@@ -239,6 +267,7 @@ export async function fetchServerPickupsAndMerge(
       })),
       status: mapServerStatus(r.status as string),
       synced: true,
+      archived: (r.archived as boolean) ?? false,
       createdAt: (r.created_at as string) ?? new Date().toISOString(),
       updatedAt: (r.updated_at as string) ?? new Date().toISOString(),
     }
@@ -246,13 +275,22 @@ export async function fetchServerPickupsAndMerge(
   }
 
   for (const localPickup of localList) {
-    if (localPickup.synced && localPickup.serverId) {
-      const existing = mergedMap.get(localPickup.serverId)
-      if (!existing || new Date(localPickup.updatedAt) > new Date(existing.updatedAt)) {
-        mergedMap.set(localPickup.serverId, localPickup)
+    const normalized = {
+      ...localPickup,
+      sampleId: localPickup.sampleId ?? null,
+      siteId: localPickup.siteId ?? null,
+      vialCount: localPickup.vialCount ?? 1,
+      chlorineReading: localPickup.chlorineReading ?? localPickup.chlorine ?? null,
+      pickupLocationName: localPickup.pickupLocationName ?? null,
+      archived: localPickup.archived ?? false,
+    }
+    if (normalized.synced && normalized.serverId) {
+      const existing = mergedMap.get(normalized.serverId)
+      if (!existing || new Date(normalized.updatedAt) > new Date(existing.updatedAt)) {
+        mergedMap.set(normalized.serverId, normalized)
       }
     } else {
-      mergedMap.set(localPickup.id, localPickup)
+      mergedMap.set(normalized.id, normalized)
     }
   }
 
@@ -264,10 +302,19 @@ export async function fetchServerPickupsAndMerge(
 
 function mapServerStatus(s: string): SamplePickup['status'] {
   const lower = (s ?? '').toLowerCase()
-  if (['pending', 'submitted', 'synced', 'rejected'].includes(lower)) {
-    return (lower.charAt(0).toUpperCase() + lower.slice(1)) as SamplePickup['status']
+  const map: Record<string, SamplePickup['status']> = {
+    draft: 'Draft',
+    pending_pickup: 'PendingPickup',
+    pending: 'Pending',
+    submitted: 'Submitted',
+    synced: 'Synced',
+    in_lab: 'InLab',
+    lab_approved: 'LabApproved',
+    archived: 'Archived',
+    rejected: 'Rejected',
+    scheduled: 'Pending',
+    in_progress: 'Pending',
+    completed: 'Synced',
   }
-  if (lower === 'scheduled' || lower === 'in_progress') return 'Pending'
-  if (lower === 'completed') return 'Synced'
-  return 'Pending'
+  return map[lower] ?? 'Pending'
 }

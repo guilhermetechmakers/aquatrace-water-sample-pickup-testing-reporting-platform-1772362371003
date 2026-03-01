@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MapPin,
@@ -10,6 +10,9 @@ import {
   Plus,
   Bell,
   Droplets,
+  CheckCircle,
+  Clock,
+  ListOrdered,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -42,9 +45,25 @@ export function TechnicianDashboardPage() {
   const canCreate = hasPermission('pickup', 'create')
   const pickups = data?.merged ?? []
   const assignedPickups = (pickups ?? []).slice(0, 5)
-  const pendingCount = (pickups ?? []).filter(
-    (p) => !p.synced && (p.status === 'Pending' || p.status === 'Submitted')
-  ).length
+
+  const quickStats = useMemo(() => {
+    const list = Array.isArray(pickups) ? pickups : []
+    const pendingSubmissions = list.filter(
+      (p) => !p.synced && (p.status === 'Pending' || p.status === 'Submitted' || p.status === 'PendingPickup')
+    ).length
+    const recentlySynced = list.filter(
+      (p) => p.synced && (p.status === 'Synced' || p.status === 'LabApproved')
+    ).length
+    const upcoming = list.filter(
+      (p) =>
+        p.status === 'Draft' ||
+        p.status === 'PendingPickup' ||
+        p.status === 'Pending'
+    ).length
+    return { pendingSubmissions, recentlySynced, upcoming }
+  }, [pickups])
+
+  const pendingCount = quickStats.pendingSubmissions
   const hasNotifications = (pickups ?? []).some(
     (p) => p.status === 'Rejected' || (p.synced && p.status === 'Synced')
   )
@@ -115,6 +134,49 @@ export function TechnicianDashboardPage() {
         </div>
       </div>
 
+      {/* Quick Stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="transition-all duration-200 hover:shadow-card-hover border-primary/20">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Clock className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{quickStats.upcoming}</p>
+                <p className="text-sm text-muted-foreground">Upcoming pickups</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-card-hover border-accent/20">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-lg bg-accent/10 p-3">
+                <ListOrdered className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{quickStats.pendingSubmissions}</p>
+                <p className="text-sm text-muted-foreground">Pending submissions</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="transition-all duration-200 hover:shadow-card-hover border-success/20">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-lg bg-success/10 p-3">
+                <CheckCircle className="h-6 w-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{quickStats.recentlySynced}</p>
+                <p className="text-sm text-muted-foreground">Recently synced</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="transition-all duration-200 hover:shadow-card-hover md:col-span-2">
           <CardHeader>
@@ -142,22 +204,22 @@ export function TechnicianDashboardPage() {
                   <Link
                     key={p.id}
                     to={`/dashboard/pickups/${p.id}`}
-                    className="block rounded-lg border p-4 transition-all hover:border-primary/30 hover:shadow-card"
+                    className="block rounded-lg border p-4 transition-all hover:border-primary/30 hover:shadow-card min-h-[72px] active:bg-muted/50 touch-manipulation"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-mono font-medium">{p.vialId || p.id.slice(0, 12)}</p>
                         <p className="text-sm text-muted-foreground">
-                          {p.location ?? `Sample ${p.vialId}`}
+                          {p.pickupLocationName ?? p.location ?? `Sample ${p.vialId}`}
                         </p>
                         <div className="mt-1 flex items-center gap-2">
                           <Badge
                             variant={
-                              p.status === 'Synced'
+                              p.status === 'Synced' || p.status === 'LabApproved' || p.status === 'Archived'
                                 ? 'success'
                                 : p.status === 'Rejected'
                                   ? 'rejected'
-                                  : p.status === 'Submitted'
+                                  : p.status === 'Submitted' || p.status === 'InLab'
                                     ? 'accent'
                                     : 'pending'
                             }
@@ -190,7 +252,11 @@ export function TechnicianDashboardPage() {
               </div>
             )}
             {(pickups ?? []).length > 5 && (
-              <Button variant="outline" className="mt-4 w-full" asChild>
+              <Button
+                variant="outline"
+                className="mt-4 w-full min-h-[44px] touch-manipulation"
+                asChild
+              >
                 <Link to="/dashboard/pickups/samples">View all samples</Link>
               </Button>
             )}
@@ -210,7 +276,11 @@ export function TechnicianDashboardPage() {
             </CardHeader>
             <CardContent>
               {canCreate ? (
-                <Button asChild className="w-full" size="lg">
+                <Button
+                  asChild
+                  className="w-full min-h-[48px] touch-manipulation"
+                  size="lg"
+                >
                   <Link to="/dashboard/pickups/new">
                     <Camera className="h-5 w-5 mr-2" />
                     Scan & Capture

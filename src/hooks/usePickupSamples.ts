@@ -66,6 +66,12 @@ export function useCreatePickupSample() {
         synced: false,
         status,
         photos: input.photos ?? [],
+        sampleId: input.sampleId ?? `SMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        siteId: input.siteId ?? null,
+        vialCount: input.vialCount ?? 1,
+        chlorineReading: input.chlorineReading ?? input.chlorine ?? null,
+        pickupLocationName: input.pickupLocationName ?? null,
+        archived: input.archived ?? false,
         createdAt: now,
         updatedAt: now,
       }
@@ -92,6 +98,12 @@ export function useCreatePickupSample() {
   })
 }
 
+export interface UpdatePickupAuditMetadata {
+  fromState?: string | null
+  toState?: string | null
+  action?: string
+}
+
 export function useUpdatePickupSample() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -101,9 +113,11 @@ export function useUpdatePickupSample() {
     mutationFn: async ({
       id,
       updates,
+      auditMetadata,
     }: {
       id: string
       updates: Partial<SamplePickup>
+      auditMetadata?: UpdatePickupAuditMetadata
     }) => {
       const existing = await getPickup(id)
       if (!existing) throw new Error('Pickup not found')
@@ -114,12 +128,15 @@ export function useUpdatePickupSample() {
         updatedAt: now,
       }
       await savePickup(updated)
+      const actionLabel = auditMetadata?.action ?? 'Updated'
       await addAuditEntry({
         id: generateId(),
         pickupId: id,
-        action: 'Updated',
+        action: actionLabel,
         byUserId: technicianId,
         timestamp: now,
+        fromState: auditMetadata?.fromState ?? null,
+        toState: auditMetadata?.toState ?? null,
       })
       if (updates.status && updates.status !== existing.status) {
         await addStatusHistoryEntry({
@@ -127,7 +144,7 @@ export function useUpdatePickupSample() {
           pickupId: id,
           status: updates.status,
           timestamp: now,
-          note: null,
+          note: auditMetadata?.toState ? `Transitioned to ${auditMetadata.toState}` : null,
         })
       }
       return updated
