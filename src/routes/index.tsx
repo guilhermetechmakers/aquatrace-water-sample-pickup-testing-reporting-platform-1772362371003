@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { SidebarProvider } from '@/contexts/sidebar-context'
 import { AuthLayout } from '@/components/layout/auth-layout'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -16,7 +16,10 @@ import { AuthCallbackPage } from '@/pages/auth/auth-callback'
 
 import { DashboardOverview } from '@/pages/dashboard/overview'
 import { SamplesPage } from '@/pages/dashboard/samples'
-import { LabQueuePage } from '@/pages/dashboard/lab'
+import { LabTechnicianDashboardPage } from '@/pages/dashboard/lab-technician-dashboard'
+import { LabResultsEntryPage } from '@/pages/dashboard/lab-results-entry'
+import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
+import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
 import { ApprovalsPage } from '@/pages/dashboard/approvals'
 import { ReportsPage } from '@/pages/dashboard/reports'
 import { CustomersPage } from '@/pages/dashboard/customers'
@@ -117,13 +120,28 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'samples', element: <SamplesPage /> },
-      { path: 'lab', element: <LabQueuePage /> },
+      {
+        path: 'lab',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <LabTechnicianDashboardPage /> },
+          { path: 'entry/:sampleId', element: <LabResultsEntryPage /> },
+          { path: 'import', element: <LabCSVImportPage /> },
+        ],
+      },
       { path: 'approvals', element: <ApprovalsPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'invoicing', element: <InvoicingPage /> },
       { path: 'analytics', element: <AnalyticsPage /> },
-      { path: 'admin', element: <AdminPage /> },
+      {
+        path: 'admin',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <AdminPage /> },
+          { path: 'thresholds', element: <ThresholdConfigPage /> },
+        ],
+      },
       { path: 'users', element: <AdminPage /> },
       { path: 'audit', element: <AdminPage /> },
       { path: 'settings', element: <Navigate to="/dashboard/profile" replace /> },

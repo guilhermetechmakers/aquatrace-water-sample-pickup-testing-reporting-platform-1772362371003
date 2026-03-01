@@ -107,6 +107,7 @@ export function canAccessPage(role: AuthRole, page: string): boolean {
     '/dashboard/analytics': ['LAB_MANAGER', 'ADMIN'],
     '/dashboard/profile': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],
     '/dashboard/admin': ['ADMIN'],
+    '/dashboard/admin/thresholds': ['ADMIN', 'LAB_MANAGER'],
     '/dashboard/users': ['ADMIN'],
     '/dashboard/audit': ['ADMIN'],
     '/dashboard/pickups': ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'],

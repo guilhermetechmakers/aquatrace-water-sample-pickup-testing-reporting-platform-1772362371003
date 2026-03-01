@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Check,
   X,
+  Settings,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -162,6 +163,20 @@ export function AdminPage() {
               <CardTitle className="text-lg">Audit Logs</CardTitle>
               <CardDescription>
                 Review role changes and access events
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to="/dashboard/admin/thresholds">
+          <Card className="h-full transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <Settings className="h-10 w-10 text-primary" />
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="text-lg">Threshold Config</CardTitle>
+              <CardDescription>
+                SPC and Total Coliform thresholds per customer/site
               </CardDescription>
             </CardContent>
           </Card>

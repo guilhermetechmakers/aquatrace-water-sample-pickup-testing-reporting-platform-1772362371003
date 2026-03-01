@@ -326,27 +326,230 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-typography, spacing, color tokens, and components.
-- Ensure consistent styling across the pages: Sample Pickup Form (technician), Technician Sample List, Sample Details Page, Technician Dashboard (Mobile).
-- Use progressive disclosure for advanced fields; show inline help and validation messages.
-- Maintain accessibility (focus management, keyboard navigation, ARIA).
+# Lab Results Entry & Validation
 
-## Mandatory Coding Standards — Runtime Safety
+## Overview
+Develop a robust, user-friendly module for AquaTrace that enables accurate entry, validation, and management of SPC (Spoiled/Standard Plate Count) and Total Coliform results. The system should support configurable threshold rules per customer/site, file attachments from instruments, versioned edits with audit logs, and batch CSV import with mapping and preview. This feature will power a Lab Technician Dashboard (desktop-focused) and a Lab Results Entry Page for inputting SPC and Total Coliform results, with safety-critical runtime guards to prevent null/undefined runtime errors.
 
-CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
+## Components to Build
+1) Lab Technician Dashboard (Desktop)
+- Purpose: Display samples queued for lab testing, status of SPC/Total Coliform results, and access to entry and validation flows.
+- Data presentation: Quote-approved queue with sortable columns (Sample ID, Customer, Site, Collection Date, On-site status, SPC Result, Coliform Result, Entry Status, Last Modified).
+- Actions: Quick-entry panel to begin or continue results entry; access to Lab Results Entry Page; filter by queue status, due date, and site.
+- Validation hooks: Real-time validation for numeric ranges and unit consistency when values are entered.
+- Guards: Ensure all arrays are safely mapped using (items ?? []).map(...), with isArray guards where needed.
 
-1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null (not []) when there are no rows.
-2. Array methods (.map(), .filter(), .reduce(), .forEach(), .find(), .some(), .every()):
-   - Never call on a value that could be null, undefined, or a non-array.
-   - Use (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
-3. React useState for arrays/objects: Always initialize with the correct type — useState<Type[]>([]) for arrays, useState<Type>({}) for objects where applicable.
-4. API response shapes: Always validate — const list = Array.isArray(response?.data) ? response.data : [].
-5. Optional chaining: Use obj?.property?.nested when accessing nested API responses or database queries.
-6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}.
+2) Lab Results Entry Page
+- Form Layout: Segmented form with fields for SPC result, Total Coliform result, units, detection method, date/time, and instrument output file attachments (uploads for CSV/XLSX, PDF lab certificates, images).
+- Validation: Client-side form-level validation and server-side validation for numeric ranges, units, and allowed methods. Display inline validation messages.
+- Attachments: File input with drag-and-drop, size/type restrictions, and secure storage references (e.g., presigned URLs, object storage path).
+- Versioning: Every save creates a new version entry with timestamp, user, and diff summary. Ability to revert to previous versions with an audit trail.
+- CSV Import: Batch CSV import feature with mapping (CSV column -> field), preview of mapped data, validation of each row, and import job with status tracking.
+- Safety: All array-based fields initialized as empty arrays in state; guard against null results from API calls using data ?? [] and Array.isArray checks.
 
----
+3) Validation & Rule Engine
+- Thresholds: Configurable per customer/site for SPC and Total Coliform with upper/lower bounds, units, and allowed detection methods.
+- Flags: If values are out-of-range or inconsistent, flag with severity (warning, error) and prevent progression pending supervisor approval.
+- Rule configuration UI: Admin-facing interface to set thresholds, units, and methods per customer/site, with version history.
 
-If you want, I can produce a ready-to-run starter monorepo scaffold (Next.js + NestJS or similar) with the data models, migrations, example API handlers, and frontend pages wired to mock data, following the above constraints.
+4) API Layer (Backend)
+- Endpoints: 
+  - GET /samples/queued to fetch samples awaiting lab entry
+  - POST /results to create new SPC/Total Coliform results (with versioning)
+  - PUT /results/{id} to update results and create new version
+  - GET /results/{id} to fetch a result and its version history
+  - POST /results/import to handle batch CSV import with mapping
+  - POST /results/{id}/revert to revert to a previous version
+  - POST /attachments to upload instrument output files
+  - GET /thresholds to fetch per-site/customer threshold config; POST/PUT to update thresholds
+- Data models: Samples, Results, ResultVersions, Attachments, ThresholdConfigs, AuditLogs, CSVImportJobs
+- Security: JWT-based authentication; role-based access control (Lab Technician, Lab Manager, Admin, etc.)
+
+5) Integration & Data Flow
+- When a sample is selected in the Lab Technician Dashboard, preload any existing result data (if editing) and present the Lab Results Entry Page.
+- On save, validate locally, then push to backend with versioning; run server-side validation against configured thresholds; if out-of-range, mark as flagged and require manager action.
+- Attachments are stored securely; metadata in the DB references storage path, mime type, size, and version.
+- CSV import creates a staging preview and a final import job with per-row validation, reporting errors per row.
+- All actions generate audit logs for traceability (who did what, when, old vs new values).
+
+## User Experience Flow
+- Step 1: Lab Technician logs in (desktop). Accesses Lab Technician Dashboard.
+- Step 2: Technician views the Sample Queue, filters by site/date, selects a sample ready for SPC/Total Coliform entry.
+- Step 3: Technician clicks to open Lab Results Entry Page. Preloads existing data if present.
+- Step 4: Technician enters SPC and Total Coliform values, selects units, and optionally attaches instrument output files.
+- Step 5: Real-time client-side validation runs; if numeric out-of-range, the UI highlights fields and shows explanations. User can proceed if acceptable or escalate.
+- Step 6: Technician saves. Client sends data to backend; server validates against threshold configs, creates a new Result record, and creates a new ResultVersion. Attachments are stored with references.
+- Step 7: If all validations pass, the result is marked ready for Manager review; otherwise, a flagged state is shown with required manager action.
+- Step 8: Lab Manager reviews flagged results, approves or requests corrections, and can export to PDF; PDFs are generated with embedded results, audit trail, and attached documents.
+- Step 9: Approved results are distributed to the customer via PDF delivery; history and audit logs preserved.
+- Step 10: Admin/Management can configure threshold policies per customer/site and manage user roles.
+
+## Technical Specifications
+
+Data Models
+- Sample:
+  - id (string)
+  - customerId (string)
+  - siteId (string)
+  - collectionDate (string: ISO)
+  - status (string) // e.g., "queued", "in_progress", "completed"
+  - createdAt, updatedAt
+- Result:
+  - id (string)
+  - sampleId (string)
+  - spcValue (number | null)
+  - spcUnit (string | null)
+  - totalColiformValue (number | null)
+  - totalColiformUnit (string | null)
+  - method (string | null)
+  - enteredBy (string) // userId
+  - enteredAt (string)
+  - version (number)
+  - status (string) // "draft", "validated", "flagged", "approved"
+  - flags (array of strings) // e.g., ["out_of_range", "unit_mismatch"]
+- ResultVersion:
+  - id (string)
+  - resultId (string)
+  - version (number)
+  - dataSnapshot (JSON) // serialized fields at this version
+  - changedBy (string)
+  - changedAt (string)
+  - note (string | null)
+- Attachment:
+  - id (string)
+  - resultId (string)
+  - fileName (string)
+  - mimeType (string)
+  - size (number)
+  - storagePath (string)
+  - uploadedAt (string)
+- ThresholdConfig:
+  - id (string)
+  - customerId (string)
+  - siteId (string)
+  - spcMin (number | null)
+  - spcMax (number | null)
+  - spcUnit (string)
+  - tcMin (number | null)
+  - tcMax (number | null)
+  - tcUnit (string)
+  - effectiveFrom (string)
+  - effectiveTo (string | null)
+- AuditLog:
+  - id, action, userId, sampleId, resultId, changes (JSON), timestamp
+- CSVImportJob:
+  - id, uploadedBy, status, totalRows, successRows, failedRows, createdAt, completedAt, errors (array)
+
+API Endpoints
+- GET /samples/queued
+  - Returns: { data: Sample[] | null, count: number }
+  - Safeguards: ensure data ?? [], Array.isArray(data)
+- GET /results/{id}
+  - Returns: { data: Result | null, versions: ResultVersion[], attachments: Attachment[] }
+  - Validation: map response with defaults: const res = response?.data ?? {}; const result = Array.isArray(res) ? res[0] : res;
+- POST /results
+  - Body: { sampleId, spcValue, spcUnit, totalColiformValue, totalColiformUnit, method, attachments[]
+  - Returns: { id, version, status }
+- PUT /results/{id}
+  - Body: { spcValue, spcUnit, totalColiformValue, totalColiformUnit, method, note, attachments[] }
+- POST /results/import
+  - Body: { csvFile, mappings: { csvColumn: fieldName }, previewOnly: boolean }
+  - Returns: { jobId, previewRows: Array }
+- POST /attachments
+  - Body: { resultId, fileName, mimeType, size, storagePath }
+- POST /results/{id}/revert
+  - Body: { toVersion: number, note?: string }
+- GET /thresholds
+  - Params: customerId, siteId
+  - Returns: ThresholdConfig
+
+Security
+- Use JWT-based authentication; roles: Technician, LabTech, LabManager, Admin, CustomerView.
+- Endpoint access restrictions:
+  - Technician: GET queued, GET sample, POST results, POST attachments
+  - LabTech: GET/POST results, PUT results, CSV import
+  - LabManager: POST approvals, export PDFs, revert versions
+  - Admin: manage customers/sites/thresholds/users
+- All responses must be sanitized; never expose secrets.
+
+Validation
+- Frontend:
+  - Numeric fields must parse to finite numbers; show error if NaN or out of range.
+  - Threshold units must match configured units; warn if mismatched but allow as exception only with a flag.
+  - Required fields: sampleId, spcValue, totalColiformValue, units, method, enteredBy.
+  - Attachments: limit types to application/pdf, image/*, text/csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; max size 50MB per file.
+- Backend:
+  - Re-validate numeric ranges against thresholdConfig at time of request.
+  - Constrain values to null where not provided; ensure integrity.
+  - Audit logs created for every create/update/revert/import action.
+- Null-safety:
+  - All array results from Supabase-like calls should use data ?? [].
+  - Use Array.isArray checks where appropriate.
+  - Initialize React state with appropriate defaults: useState<Result[]>([]) for results, useState<Attachment[]>([]) for attachments, etc.
+
+Acceptance Criteria
+- [ ] UI: Lab Technician Dashboard renders a sortable queue with correct data bindings and safe rendering (no undefined errors).
+- [ ] Entry Page: Form supports SPC and Total Coliform entry with in-line validation, unit consistency checks, and optional attachments.
+- [ ] Validation: Server enforces threshold rules per customer/site; out-of-range values flag appropriately and require manager review before final distribution.
+- [ ] Versioning: Every edit creates a new version; ability to revert with audit log and UI indicators showing version history.
+- [ ] CSV Import: Batch import supports mapping, preview, per-row validation, and a final import job with status reporting.
+- [ ] Attachments: Instrument outputs and scanned certificates stored securely with retrievable metadata.
+- [ ] Security: All endpoints enforce role-based access controls and proper authentication; sensitive data not exposed.
+- [ ] Reliability: All API responses validated for shape, with defaults applied to avoid nulls (e.g., const list = Array.isArray(response?.data) ? response.data : []).
+
+UI/UX Guidelines
+- Maintain design language consistency with the AquaTrace app: typography, spacing, color tokens, and elevation.
+- Use clear affordances for validation errors and flagged results; consistent icons and status chips.
+- Prefer desktop-first layouts for the Lab Technician Dashboard with responsive adjustments for smaller viewports where necessary.
+- Provide accessible labels, keyboard navigation, and screen-reader friendly error messages.
+- Ensure loading skeletons for long-running CSV imports or data fetches.
+- Provide inline help tooltips near units, thresholds, and methods.
+
+Mandatory Coding Standards — Runtime Safety
+
+CRITICAL: Implement the following runtime safety measures in ALL generated code.
+
+1) Supabase query results:
+- Always apply nullish coalescing: const items = data ?? []; when consuming query results.
+- Example: const samples = (response?.data ?? []) as Sample[];
+
+2) Array methods safety:
+- Do not call .map(), .filter(), .reduce(), .forEach(), .find(), .some(), .every() on values that could be null/undefined.
+- Use guards: const safeItems = Array.isArray(items) ? items : []; const mapped = safeItems.map(...);
+
+3) React useState defaults for arrays/objects:
+- Initialize with correct types: const [results, setResults] = useState<Result[]>([]);
+- Avoid useState() or useState(null) for array/object states.
+
+4) API response shapes:
+- Validate responses: const list = Array.isArray(response?.data) ? response.data : [];
+
+5) Optional chaining:
+- Access nested properties safely: obj?.property?.nestedProp
+
+6) Destructuring with defaults:
+- Use defaults: const { items = [], count = 0 } = response ?? {};
+
+Project Context Alignment
+- Ensure flow supports the five login levels (Technician, Lab Tech, Lab Manager, Admin, Customer Viewer) consistent with the broader AquaTrace auth model.
+- Integrate with existing customer/site configuration and user management services.
+- Ensure auditability and PDF generation flow for final customer delivery, including embedding version history and attachments into the generated PDF.
+
+Deliverables
+- Fully wired frontend components: Lab Technician Dashboard, Lab Results Entry Page, CSV Import UI.
+- Backend API endpoints with robust validation, error handling, and security.
+- Threshold configuration module with per-customer/site scoping.
+- Attachment handling and storage strategy, with retrieval paths and metadata.
+- Comprehensive unit and integration tests covering data flows, validations, and versioning.
+- Documentation: API contract, data model diagrams, and user-facing help notes.
+
+Notes for Implementation
+- Use TypeScript with strict null checks enabled.
+- Use a modular architecture: components, services (API layer), hooks for data fetching and state management, and a centralized validation library.
+- Implement feature flags or configuration toggles to enable/disable the Lab Results Entry workflow per environment.
+- Provide a migration plan for adding versioned results and threshold configs to an existing database schema.
+
+This prompt should guide an AI development tool to implement a complete, safe, and auditable Lab Results Entry & Validation feature that aligns with the AquaTrace platform’s architecture, security model, and UX expectations.
 
 ## Implementation Notes
 
