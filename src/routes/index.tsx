@@ -35,6 +35,8 @@ import { SampleListPage } from '@/pages/dashboard/sample-list'
 import { SampleDetailsPage } from '@/pages/dashboard/sample-details'
 
 import { CustomerPortalPage } from '@/pages/customer/portal'
+import { ReportViewerPage } from '@/pages/customer/report-viewer'
+import { ShareLinkViewPage } from '@/pages/customer/share-link-view'
 import { HelpPage } from '@/pages/help'
 import { PrivacyPage } from '@/pages/privacy'
 import { TermsPage } from '@/pages/terms'
@@ -173,7 +175,18 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <CustomerPortalPage /> },
+      { path: 'reports/:reportId', element: <ReportViewerPage /> },
     ],
+  },
+  {
+    path: '/portal/share/:token',
+    element: (
+      <div className="min-h-screen bg-background">
+        <main className="container mx-auto px-4 py-8">
+          <ShareLinkViewPage />
+        </main>
+      </div>
+    ),
   },
 
   { path: '/404', element: <NotFoundPage /> },

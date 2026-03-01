@@ -326,254 +326,53 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-# PDF Report Generation & Distribution
+typography, color palette, spacing
+- Use loading skeletons for data fetches; show skeletons in lists
+- Provide clear empty states for no data
+- Ensure consistent error messaging and retry options
+- Provide clear action affordances for security-sensitive operations (e.g., download, share, reissue)
 
-## Overview
-This feature enables automated generation of signed PDF reports that compile pickup data, lab results (SPC and Total Coliform), attachments, and a manager signature. It includes automatic emailing to customers, durable storage in a customer portal, versioned report history with reissue workflow, and a dedicated Approval Details page displaying all supporting files and manager comment history. Reports are rendered server-side to a PDF via a trusted renderer (DocRaptor or wkhtmltopdf), with a high-fidelity HTML template that ensures consistent visual appearance, security, and auditability. Attachments and signatures are embedded securely, and audit metadata (timestamps, user IDs, and IPs where available) is appended.
+Mandatory Coding Standards — Runtime Safety
+- Supabase query results: Always use nullish coalescing — const items = data ?? []
+- Array methods: Guard all calls
+  - (items ?? []).map(...)
+  - Array.isArray(items) ? items.map(...) : []
+- React useState for arrays/objects: useState<Type[]>([])
+- API response shapes: const list = Array.isArray(response?.data) ? response.data : []
+- Optional chaining: use obj?.property?.nested
+- Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
 
----
+Project Deliverables (Artifacts)
+- Frontend codebase:
+  - Pages: page_013 (Customer Portal), page_014 (Report PDF Viewer)
+  - Components: ReportList, InvoiceList, PDFViewer, AttachmentPanel, ShareLinkDialog, ReissueModal, UserManagement
+  - Hooks: useTenantData, useAudits, useShareLinks, useNotifications
+  - Utils: safeArrayMap, apiFetch with runtime guards, validation helpers
+- Backend services:
+  - REST/GraphQL endpoints as listed
+  - Data models and migrations for tenants, users, reports, invoices, attachments, share links, audit logs, invitations, support tickets
+  - PDF generation/streaming service
+  - Audit log ingestion and storage
+  - Notification integration
+- Tests:
+  - Unit tests for data shaping and guards
+  - Integration tests for tenant isolation
+  - End-to-end tests for portal flow (login, view, download, share, reissue, support)
+- Documentation:
+  - API contract docs
+  - Data model diagrams
+  - Deployment/runbooks for multi-tenant setup
 
-## Components to Build
+Notes for AI Development Tool
+- Generate strongly-typed TypeScript interfaces for all data models
+- Use robust error handling and meaningful messages
+- Provide exhaustive comments and JSDoc on public APIs
+- Ensure all code paths respect the runtime safety guidelines above
+- Include example data seeds for multi-tenant test environments
+- Include migration scripts to support new tables/fields
+- Produce sample configuration for environment variables (tenant schema, storage paths, PDF service endpoints)
 
-1) PDF Report HTML Template (asset)
-- High-fidelity, responsive HTML/CSS template used as the source for the PDF generator.
-- Sections:
-  - Header with company branding, report title, report/version number, and audit metadata (created_at, generated_by, version).
-  - Pickup data: Technician name, pickup time, GPS coordinates (lat/long), location, vessel/vial IDs, device ID.
-  - Lab results: SPC result, Total Coliform result, units, reference ranges, testing timestamps, lab technician name.
-  - Attachments: list of file thumbnails/labels (PDFs, images, CSVs); support for inline previews or filename display with secure download links.
-  - Signatures: manager signature block with digital or image-based signature, date, and certificate details.
-  - Attachments section: embedded or linked attachments with verifiable hashes.
-  - Audit trail: action log (created, updated, approved, reissued) with user roles and timestamps.
-  - Footer: page numbers, version, and legal/compliance notes.
-- Dynamic data injection points with strict type handling and defaults.
-- Ensure accessibility and print-friendly layout with print media CSS.
-- Security: template should not execute client-side scripts; all data injected server-side.
-
-2) Backend PDF Generator (server-side)
-- Implement an API to generate PDFs from the HTML template.
-- Render options:
-  - Use DocRaptor or wkhtmltopdf depending on deployment; provide fallbacks.
-  - Ensure sandboxed rendering and strict resource limits (time, memory).
-- Input payload:
-  - reportId, version, pickupData, labResults, attachments, signatures, auditMetadata, customerId.
-- Behavior:
-  - Validate all required fields, apply defaults where appropriate.
-  - Generate a signed PDF buffer/stream and return a secure URL or blob reference.
-  - Enforce content security with integrity checks (hash of PDF) and include a manifest of embedded resources.
-
-3) PDF Storage & Retrieval (asset/storage)
-- Durable object storage (S3-compatible) with lifecycle policies:
-  - Store generated PDFs with keys: reports/{customerId}/{reportId}/v{version}.pdf
-  - Retention policy, versioning, and automatic archival/transition to cold storage if applicable.
-  - Metadata: customerId, reportId, version, generatedAt, generatedBy, signatureKey, hash.
-- Secure access control:
-  - Signed URLs or portal access tokens for customers to view/download.
-  - Enforce least-privilege access, keep logs of access events.
-
-4) Email Distribution (integration)
-- Transactional email via SendGrid (or equivalent):
-  - Template-based email with placeholders for customer name, report title, pickup date, and summary.
-  - Attach the generated PDF and, optionally, a compact summary attachment (CSV/JSON).
-  - Email workflow:
-    - On report generation or reissue, trigger email to the customer’s primary contact.
-    - Include a secure link to the customer portal view of the report.
-  - Email delivery tracking: status, bounces, delivered, opened, clicked.
-- Security:
-  - Ensure that attachments are not exposed to unauthorized recipients.
-  - Use per-tenant SendGrid API keys, rotate keys, and store in a secure vault.
-
-5) Versioning & Reissue Workflow (process)
-- Reports are versioned (v1, v2, …). Reissue creates a new version with a new PDF and updated signatures.
-- Audit trail entries for each version change: created, updated, approved, reissued, emailed.
-- UI/UX path for reissuing: trigger reissue from Approval Details Page with manager confirmation.
-
-6) Approval Details Page (page_013)
-- Detailed view of a result submission awaiting approval or already approved.
-- UI components:
-  - Summary header: report meta (customer, reportId, version, status).
-  - Sections with: pickup data, lab results, attachments, manager comment history, audit trail.
-  - Attachment gallery: previews, downloadable links, file type icons.
-  - Manager comments: threaded history with timestamps, user role, and actions (approve, reject, annotate).
-  - Actions:
-    - Approve, Request changes, Reissue, Email to Customer, View PDF.
-    - Sign-off capture: manager signature image and timestamp if applicable.
-  - Version navigation: switch between versions; highlight differences.
-- Data mappings:
-  - Pull data from database with robust guards; ensure arrays are initialized to [] with nullish coalescing.
-  - Guard all array operations with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
-
-7) Page 012 & Page 014 (connected flows)
-- Page 012: Upload/collect pickup data, lab results, and initial attachments; trigger report generation pipeline on submission.
-- Page 014: Distribution controls; allow sending to customer portal, email distribution scheduling, and reissue initiation.
-
----
-
-## Implementation Requirements
-
-### Frontend
-- UI Components:
-  - ApprovalDetailsPanel: collapsible sections for data blocks, comment history timeline, and action bar.
-  - AttachmentGallery: thumbnail grid with lazy loading, download actions, and secure links.
-  - SignatureBlock: render manager signature image with timestamp; fallback to placeholder if absent.
-  - VersionSwitcher: allows navigating through report versions with difference indicators.
-  - PDFPreviewModal: in-page rendering of the generated PDF (embedded viewer or downloadable link).
-- Pages:
-  - page_013: Approval Details Page with full data and actions.
-  - page_012: Acquisition/Submission form that collects pickup data and lab results; triggers generation.
-  - page_014: Distribution & Reissue Controls (email settings, reissue button, and portal storage toggle).
-- State Management:
-  - Use React with TypeScript.
-  - useState defaults: arrays as useState<Type[]>([]) and objects with defined shapes; null/undefined guards everywhere.
-  - Data fetching: useEffect with robust error handling, validating response shapes: const dataList = Array.isArray(response?.data) ? response.data : [].
-- Routing:
-  - Secure routes with role-based guards (Technician, Lab Tech, Lab Manager, Admin, Customer Viewer).
-- Accessibility:
-  - ARIA labels, semantic markup, keyboard navigable actions.
-
-### Backend
-- APIs:
-  - POST /reports/generate: Accept report payload; generate PDF; store in object storage; create report version entry; respond with reportId, version, pdfUrl.
-  - GET /reports/{customerId}/{reportId}/versions: List all versions for a report.
-  - GET /reports/{customerId}/{reportId}/versions/{version}: Retrieve version metadata and PDF URL.
-  - POST /reports/{customerId}/{reportId}/versions/{version}/approve: Approve the version; create audit log; trigger email/distribution.
-  - POST /reports/{customerId}/{reportId}/versions/{version}/reissue: Create a new version; re-run generation; return new version data.
-  - POST /reports/{customerId}/{reportId}/versions/{version}/email: Trigger email distribution with attachments.
-- Data Models (DB schema suggestions):
-  - Customers: id, name, email, portalAccessToken, etc.
-  - Reports: id (PK), customerId (FK), version, status (draft/approved/distributed), createdAt, createdBy, generatedAt, generatedBy, signatureInfo, hash.
-  - Attachments: id, reportId (FK), filename, fileType, url, size, hash, embedded (bool).
-  - PickupData: fields as structured JSON or relational columns (technicianName, pickupTime, gps, locationInfo, vialIds).
-  - LabResults: id, reportId, SPCResult, SPCUnit, SPCReference, TotalColiformResult, TotalColiformUnit, TotalColiformReference, testedAt, testedBy.
-  - Signatures: id, reportId, signerRole, signerName, signatureImageUrl, signedAt, certificateInfo.
-  - AuditTrail: id, reportId, action, performedBy, performedAt, note.
-  - Approvals: id, reportId, approverId, status, comments, approvedAt.
-- File Storage:
-  - Store PDFs in S3-compatible bucket with path as described; store metadata in DB.
-  - Implement lifecycle rules (e.g., 30 days for hot, 365 days for archive).
-- Email:
-  - Use SendGrid SDK; templates with dynamic content; attach PDF and optional summary attachments.
-  - Track email status and store delivery events in AuditTrail or dedicated EmailLogs table.
-- Validation:
-  - Server-side validation for required fields; guards for optional fields.
-  - Always sanitize inputs; validate file types for attachments; enforce size limits.
-
-### Integration
-- Data Flow:
-  - Technician submits pickup data -> Page_012 collects data -> Lab Tech records SPC/Total Coliform -> data stored -> Manager reviews on Page_013 -> generate PDF via template -> store PDF -> update report version -> email distribution via SendGrid -> portal storage update visible to Customer Viewer on Page_014/portal.
-- Signatures:
-  - Manager signature is captured as an image or certificate-based signature and embedded into the PDF via the HTML template at render time or as an overlay post-render.
-- Attachments:
-  - Attachments are uploaded in the system; included in the PDF as an attachments section with links for download; embedded content must be securely protected.
-
----
-
-## User Experience Flow
-
-1) Technician (Mobile, GPS-enabled)
-- Logs in as Technician.
-- Opens Page_012: creates a new pickup record with GPS coordinates, location, vial IDs, pH, chlorine, and pickup timestamp.
-- Adds initial attachments (photo of vial, pickup manifest).
-- Submits; system saves pickup data and queues lab data capture.
-
-2) Lab Tech
-- Logs in as Lab Tech.
-- Opens the related report, enters SPC and Total Coliform results with timestamps.
-- Attaches lab notes and any lab attachments.
-- Submits for manager approval.
-
-3) Lab Manager
-- Logs in as Lab Manager.
-- Opens Approval Details Page (Page_013) for the specific report/version.
-- Reviews all supporting data, attachments, and lab commentary.
-- Adds manager comments, references, and approves or requests changes.
-- On approval, system renders the signed PDF via server-side HTML template, stores the PDF, and triggers email distribution to the customer; creates a new distribution version if needed.
-
-4) Admin / Portal Customer
-- Customer logs into portal, navigates to their Reports section.
-- Sees list of reports per customer with version history, status, and a downloadable PDF.
-- Opens a report to view PDF in portal or download; portal can store the PDF for long-term access.
-
-5) Reissue Flow
-- If revisions are requested or updates occur, a new version is created with a fresh PDF and updated audit trail. Email and portal signals reflect the new version.
-
----
-
-## Technical Specifications
-
-Data Models: Schema details (summary)
-- Customers(id, name, email, portalToken, etc.)
-- Reports(id, customerId, version, status, createdAt, createdBy, generatedAt, generatedBy, signatureInfo, hash)
-- Attachments(id, reportId, filename, fileType, url, size, hash, embedded)
-- PickupData(reportId, technicianName, pickupTime, gpsLat, gpsLong, location, vialIds, pH, chlorine)
-- LabResults(id, reportId, SPCResult, SPCUnit, SPCReference, TotalColiformResult, TotalColiformUnit, TotalColiformReference, testedAt, testedBy)
-- Signatures(id, reportId, signerRole, signerName, signatureImageUrl, signedAt, certificateInfo)
-- AuditTrail(id, reportId, action, performedBy, performedAt, note)
-- Approvals(id, reportId, approverId, status, comments, approvedAt)
-- Emails(id, reportId, recipient, status, sentAt, response)
-
-API Endpoints (routes and methods)
-- POST /reports/generate
-- GET /reports/{customerId}/{reportId}/versions
-- GET /reports/{customerId}/{reportId}/versions/{version}
-- POST /reports/{customerId}/{reportId}/versions/{version}/approve
-- POST /reports/{customerId}/{reportId}/versions/{version}/reissue
-- POST /reports/{customerId}/{reportId}/versions/{version}/email
-- GET /attachments/{attachmentId} (secure download via signed URL)
-- GET /customers/{customerId}/portal (portal access)
-
-Security
-- Authentication: OAuth2/JWT-based across UI and APIs; role-based access controls (Technician, Lab Tech, Lab Manager, Admin, Customer Viewer).
-- Authorization: Ensure actions are restricted to appropriate roles; manager must approve before distribution; technicians cannot access other customers’ data.
-- Data protection: Encrypt sensitive data at rest; use signed URLs for downloads; audit logging for access and changes.
-- Input validation: Server-side validation with type checks and required fields; use runtime guards for array operations.
-
-Validation
-- On every API response, guard shapes: const list = Array.isArray(response?.data) ? response.data : [].
-- For all arrays from external sources (Supabase-like results), use const items = data ?? [] before mapping.
-- In UI, render safe defaults: (attachments ?? []).map(...) and (pickupData?.items ?? []).
-- Use optional chaining when accessing nested API response fields: data?.lab?.results?.value.
-
-Acceptance Criteria
-- [ ] PDF reports are generated server-side with data from pickup, lab results, attachments, and manager signature; rendered via HTML template to PDF; stored in S3 with versioned keys.
-- [ ] Reports are automatically emailed to the customer upon approval, with the PDF attached and a secure portal link.
-- [ ] Approval Details Page (page_013) displays all data blocks, attachments, and a comprehensive manager comment history; supports reissue and version navigation.
-- [ ] All data flows guarded against nulls/undefined; arrays initialized with [] where appropriate; React state initialized to appropriate types; API responses validated.
-- [ ] Security: role-based access is enforced; signed URLs used for downloads; logs maintained for access and actions.
-- [ ] UI aligns with existing design system; responsive for mobile and desktop; accessible with ARIA where applicable.
-
-UI/UX Guidelines
-- Maintain consistent typography, color palette, spacing, and component styles with the rest of the AquaTrace app.
-- Clear visual indicators for report status, version numbers, and required approvals.
-- Provide loading states and error feedback for all async operations.
-- Ensure print-to-PDF consistency between HTML and final PDF.
-
-Mandatory Coding Standards — Runtime Safety (CRITICAL)
-1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null when there are no rows.
-2. Array methods: Never call on non-arrays; guard with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
-3. React useState for arrays/objects: Initialize arrays with useState<Type[]>([]) and objects with appropriate defaults.
-4. API response shapes: Validate — const list = Array.isArray(response?.data) ? response.data : [].
-5. Optional chaining: Use obj?.property?.nested when accessing nested API data.
-6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}.
-
-Notes for AI Development Tooling
-- Generate strongly-typed TypeScript interfaces for all data models (Customer, Report, LabResults, Attachments, Signatures, AuditTrail, Approvals, PickupData, EmailLog).
-- Provide seed/migration scripts for database schema with migrations that preserve versioned reports and attachments.
-- Create a reusable HTML template engine layer that injects data with strict null handling and escapes interpolated values to prevent injection.
-- Implement end-to-end tests:
-  - PDF generation pipeline test with mock data to ensure PDF is produced and stored.
-  - Approval workflow test ensuring state transitions (draft -> approved -> distributed) and versioning.
-  - Email dispatch test validating attachments and portal links.
-  - Approval Details Page rendering test validating all sections and history display.
-- Include feature flags to enable/disable PDF generation or email distribution per tenant.
-- Ensure observability: metrics for generation time, email delivery status, error rates; structured logging with correlation IDs.
-
-Project Context alignment
-- AquaTrace platform: 5 login roles; mobile-friendly flows for technicians; robust lab/result handling; secure, auditable PDF distribution; versioned reporting with reissue.
-- Associated pages: page_012 (submission), page_013 (approval details), page_014 (distribution controls).
-- Target output: signed, versioned PDFs with attachments and manager signature, distributed via email and available in customer portal.
-
-If you’d like, I can tailor this prompt further to your preferred tech stack (Next.js + PostgreSQL + Supabase, or NestJS + Prisma + Postgres, etc.), specify exact data field names, or provide concrete file and folder structures for a starter repository.
+By implementing the above, the AquaTrace Customer Portal will securely provide per-tenant access to historical reports and invoices, enable PDF viewing/downloading with secure sharing, support role-based user management, ensure robust auditing, and offer integrated support workflows.
 
 ## Implementation Notes
 
