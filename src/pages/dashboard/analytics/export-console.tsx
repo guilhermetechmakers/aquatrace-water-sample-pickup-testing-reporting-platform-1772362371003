@@ -27,7 +27,7 @@ export function ExportConsolePage() {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [filters] = useState<AnalyticsFilters>(defaultFilters())
 
-  const { data: exportsData, isLoading } = useExports()
+  const { data: exportsData, isLoading, isError, error } = useExports()
   const exportList = exportsData?.data ?? []
 
   const canExport = hasPermission('analytics', 'execute')
@@ -74,7 +74,7 @@ export function ExportConsolePage() {
         )}
       </div>
 
-      <ExportList exports={exportList} isLoading={isLoading} />
+      <ExportList exports={exportList} isLoading={isLoading} error={isError ? error ?? null : null} />
 
       <ScheduleExportModal
         open={exportModalOpen}

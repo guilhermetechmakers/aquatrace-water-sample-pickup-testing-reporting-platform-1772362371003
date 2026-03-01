@@ -75,7 +75,7 @@ export function AnalyticsPage() {
     alertStatus as 'open' | 'acknowledged' | 'resolved' | ''
   )
   const { data: errorData, isLoading: errorLoading } = useErrorRates(filters)
-  const { data: exportsData, isLoading: exportsLoading } = useExports()
+  const { data: exportsData, isLoading: exportsLoading, isError: exportsError, error: exportsErrorObj } = useExports()
   const { data: slaComplianceData, isLoading: slaLoading } = useSLAComplianceByCustomer(filters)
 
   const summary = kpiData?.summary ?? {
@@ -258,7 +258,11 @@ export function AnalyticsPage() {
       </div>
 
       {canExport && (
-        <ExportList exports={exportList} isLoading={exportsLoading} />
+        <ExportList
+          exports={exportList}
+          isLoading={exportsLoading}
+          error={exportsError ? exportsErrorObj ?? null : null}
+        />
       )}
 
       <ScheduleExportModal
