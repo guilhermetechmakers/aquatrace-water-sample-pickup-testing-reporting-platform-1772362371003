@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   MapPin,
+  ListOrdered,
   Shield,
   UserCog,
   FileCheck,
@@ -28,6 +29,7 @@ import { Separator } from '@/components/ui/separator'
 const allNavItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Overview', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/pickups', icon: MapPin, label: 'My Pickups', roles: ['TECHNICIAN'] },
+  { to: '/dashboard/pickups/samples', icon: ListOrdered, label: 'Sample List', roles: ['TECHNICIAN'] },
   { to: '/dashboard/samples', icon: Droplets, label: 'Samples', roles: ['TECHNICIAN', 'LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/lab', icon: FlaskConical, label: 'Lab Queue', roles: ['LAB_TECH', 'LAB_MANAGER', 'ADMIN'] },
   { to: '/dashboard/approvals', icon: CheckSquare, label: 'Approvals', roles: ['LAB_MANAGER', 'ADMIN'] },

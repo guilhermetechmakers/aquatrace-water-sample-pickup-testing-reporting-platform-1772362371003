@@ -24,7 +24,10 @@ import { InvoicingPage } from '@/pages/dashboard/invoicing'
 import { AnalyticsPage } from '@/pages/dashboard/analytics'
 import { ProfilePage } from '@/pages/dashboard/profile'
 import { AdminPage } from '@/pages/dashboard/admin'
-import { PickupsPage as TechnicianPickupsPage } from '@/pages/dashboard/pickups'
+import { TechnicianDashboardPage } from '@/pages/dashboard/technician-dashboard'
+import { SamplePickupFormPage } from '@/pages/dashboard/sample-pickup-form'
+import { SampleListPage } from '@/pages/dashboard/sample-list'
+import { SampleDetailsPage } from '@/pages/dashboard/sample-details'
 
 import { CustomerPortalPage } from '@/pages/customer/portal'
 import { HelpPage } from '@/pages/help'
@@ -104,7 +107,15 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardOverview /> },
-      { path: 'pickups', element: <TechnicianPickupsPage /> },
+      {
+        path: 'pickups',
+        children: [
+          { index: true, element: <TechnicianDashboardPage /> },
+          { path: 'new', element: <SamplePickupFormPage /> },
+          { path: 'samples', element: <SampleListPage /> },
+          { path: ':id', element: <SampleDetailsPage /> },
+        ],
+      },
       { path: 'samples', element: <SamplesPage /> },
       { path: 'lab', element: <LabQueuePage /> },
       { path: 'approvals', element: <ApprovalsPage /> },

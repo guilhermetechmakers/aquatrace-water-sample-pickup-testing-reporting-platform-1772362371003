@@ -326,258 +326,353 @@ All dashboard pages should be nested inside the dashboard layout, not separate r
 
 ## User Design Requirements
 
-# Role-Based Access Control (RBAC)
+# Technician GPS Pickup & Offline Capture
 
 ## Overview
-Build a centralized RBAC system for AquaTrace that defines and enforces permissions across five roles: Technician, Lab Tech, Lab Manager, Admin, Customer viewer. Implement permission storage, middleware for route/API access checks, attribute-based access control where needed (e.g., customers view only their reports), audit logs for role changes, and an Admin UI to manage roles, permissions, and user invitations. Align with the AquaTrace project context (water sample pickup, onsite logging, lab testing, approval, PDF distribution, customer visibility). Ensure mobile-first experiences for field technicians (site pickups, GPS capture, readings, photos) and robust admin workflows.
+Build a mobile-first, offline-capable data capture and synchronization system for technician-led water sample pickups. Technicians capture on-site readings (pH and chlorine), GPS coordinates, photos, and barcodes for each 100 mL vial, with offline storage and robust sync to the backend. The solution includes a Technician Dashboard, Sample Pickup Form, Technician Sample List, and Sample Details Page, with proper status tracking (Pending, Submitted, Synced, Rejected) and audit trails. The system supports sequential workflows from field collection to lab testing (SPC, Total Coliform) and administration, including printing PDFs and distributing results post-approval.
 
 ## Components to Build
-- RBAC Core Model
-  - Role definitions and capability matrix (CRUD-ready for five roles)
-  - Permission granularity: page access, API actions, data visibility, and admin operations
-  - Audit logging for role creation, updates, and user-role changes
-- User Management & Invitations
-  - Admin UI to manage roles, invite users, assign roles, and reset credentials
-  - Email/SMS invitation workflow (stubbed with callbacks for integration)
-- Access Control Middleware
-  - Global route guards for frontend pages and backend APIs
-  - Attribute-based access: restrict data by customer owner, lab, or technician assignment
-- Data Layer & Validation
-  - Permission-aware queries and mutations
-  - Validation rules ensuring no leakage across customers
-- Technician Dashboard (Mobile)
-  - Mobile-first interface for field technicians
-  - Features: view assigned pickups, capture sample readings (pH, Chlorine), upload photos, capture GPS location, offline sync, conflict resolution, data timestamping
-- Audit & Reporting
-  - Audit logs for role changes, data access events, and sync operations
-  - Admin dashboards to review permissions changes and access events
-- Admin Console
-  - Role-permission matrix editor
-  - User invitation and role assignment
-  - Logs and export options (CSV/PDF)
+1) Technician GPS Pickup & Offline Capture (Core Mobile Engine)
+- Mobile-first data capture module with offline-first storage (SQLite or Realm).
+- Features:
+  - GPS capture with high accuracy, permission handling, and timestamped location data.
+  - Camera integration for photo capture with compression, EXIF preservation, and per-photo metadata.
+  - Barcode/QR code scanning via device camera to link vials to pickups (scan vial IDs, batch numbers, or customer barcodes).
+  - Form validation for required fields: vialId, pH, chlorine, GPS, timestamp, technicianId, customerSiteNotes.
+  - Offline data queue with robust conflict resolution and exponential backoff for sync.
+  - Sync engine with retry queue, conflict resolution policy, and audit trail syncing.
+  - Data models for pickups, photos, barcodes, and GPS traces.
+  - Data integrity guards: null checks, default values, and safe array handling.
+- Tech stack hints:
+  - React Native (or Flutter) with TypeScript (or Dart) for cross-platform mobile UI.
+  - SQLite (via expo-sqlite or WatermelonDB) or Realm for offline storage.
+  - Background sync task (Headless JS in RN or background services in Flutter) with exponential backoff.
+  - Camera, Location, and Barcode scanning plugins.
+
+2) Sample Pickup Form (Technician)
+- UI: Mobile-optimized form to log each pickup with the following fields:
+  - vialId (string from barcode)
+  - pH (number, 0-14 with precision)
+  - chlorine (number, mg/L)
+  - photos (array of image objects with local URIs and EXIF)
+  - gpsLatitude, gpsLongitude, gpsAccuracy
+  - timestamp (auto-filled at capture)
+  - customerSiteNotes (string)
+  - sampleVolume (default 100 mL; fixed per vial)
+  - status (Pending/Submitted)
+- UX:
+  - Barcode scan button to populate vialId, with fallback manual entry.
+  - On-device validation with inline hints and accessible error messages.
+  - Auto-save to offline storage when offline or when user hits Save Draft.
+  - “Capture Photo” flow with multiple photos per pickup (minimum of 1 photo recommended).
+  - Image handling: compression to reasonable size, preserve EXIF where possible.
+  - GPS capture button to fetch current location; show accuracy and timestamp.
+  - Timestamp UI feedback and last sync status indicator per pickup.
+- Data handling:
+  - Ensure all arrays are initialized as [] (useState<Type[]>([])).
+  - Guard all array operations with (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : [].
+  - Use nullish coalescing for fetched data (data ?? []).
+  - Use safe optional chaining for nested API fields.
+
+3) Technician Sample List
+- UI: List view showing all pickups by the technician with filtering and search.
+- Columns/Fields:
+  - vialId, timestamp, pH, chlorine, gpsAccuracy, status, synced flag, lastModified.
+- Filters:
+  - Status filter (Pending, Submitted, Synced, Rejected)
+  - Date range picker
+  - Barcode search / vialId search
+  - GPS accuracy threshold
+- Actions:
+  - Tap to open Sample Details Page
+  - Quick sync trigger for selected items (if online)
+- Data handling:
+  - Load data from offline store first; if online, merge with server data carefully (conflict resolution).
+  - Ensure safe rendering with guards for possibly missing fields.
+
+4) Sample Details Page
+- UI: Complete record for a sample with:
+  - Pickup readings: pH, chlorine, volume, timestamp
+  - GPS coordinates and accuracy
+  - Photos gallery with ability to view, delete (offline only with sync rules), and re-capture
+  - Lab results (SPC, Total Coliform) when available
+  - Audit trail: creation, updates, sync events with timestamps and technician IDs
+  - Status history: Pending, Submitted, Synced, Rejected, with timestamps
+  - Notes: customer/site notes, lab notes, admin notes
+- Interactions:
+  - Edit mode for technicians only if offline draft (with local validation)
+  - Re-upload photos if re-capturing
+  - Sync button to push updates when online (w/ background sync rules)
+  - History timeline view with expandable entries
+- Data handling:
+  - Validate nested data safely using optional chaining and array guards
+  - Use Array.isArray() checks for any lists (photos, audit entries)
+
+5) Technician Dashboard (Mobile)
+- UI: Mobile-first dashboard showing assigned pickups, quick capture, and sync status
+- Panels:
+  - Assigned Pickups: list with status, distance (from last known location), and ETA if available
+  - Quick Capture: fast-entry card to begin a new pickup with one-tap barcode scan
+  - Sync Center: shows pending offline items, last successful sync time, next retry ETA
+  - Notifications: lab results ready or rejected pickups
+- Interactions:
+  - Push to start a new pickup or continue an existing draft
+  - Pull-to-refresh to fetch server state (when online)
+  - Offline-only indicators and retry controls
+- Data handling:
+  - Ensure local state mirrors offline storage structures and uses safe defaults
+  - All displays rely on guarded data access with null/default handling
 
 ## Implementation Requirements
 
 ### Frontend
-- Architecture
-  - Use React (or your preferred modern framework) with a clean separation of concerns: components, hooks, services, and state management
-  - Centralized RBAC hook or context (e.g., useRBAC) that exposes currentUser, hasPermission(permission), and getVisibleData(schema)
-- UI Components and Pages
-  - RBAC Admin Page (page_013 or equivalent)
-    - Display role definitions, permissions matrix (read/write/delete/create for each capability)
-    - Create/Update/Delete roles (with validation to prevent orphaned permissions)
-    - Invite User modal with auto-generated onboarding workflow
-  - User Management Page (linked from Admin)
-    - List users with roles, status, last login; actions: change role, suspend, resend invite
-  - Permissions Audit Page (page_011)
-    - Filterable audit logs: action, actor, target, timestamp, payload diff
-  - Customer Access Portal (page_015)
-    - Scoped access to customer data based on role; show only their reports for Customer viewer
-  - Technician Mobile Dashboard (page_005 or dedicated mobile route)
-    - Map/geolocation capture (optional), assigned pickups list, add readings (pH, Chlorine), upload photos, offline sync indicators
-  - Lab Tech Dashboard (page_009)
-    - Enter SPC and Total Coliform results linked to specific pickup, validation, and save
-  - Lab Manager Dashboard (page_011)
-    - Approve results, generate PDFs, trigger distribution to customer
-  - Admin-only workbooks and utilities
-- Data Handling
-  - Safeguard all array operations
-  - Use data ?? [] with Supabase-like results; ensure Array.isArray checks before map/filter
-  - Initialize useState with proper defaults: useState<Type[]>([])
-  - Optional chaining for nested API responses
-- Accessibility and UX
-  - Clear permission indicators on UI elements (disabled/hidden if not permitted)
-  - Consistent styling with existing app; responsive/mobile-friendly patterns
-  - Safe form handling with validation and user feedback
-- Offline & Sync
-  - Local persistence for technician data with background sync
-  - Conflict resolution strategy and user prompts
-- Security Considerations
-  - Role-based route guards on all protected pages
-  - Ensure sensitive actions require appropriate permissions (e.g., Admin actions)
-  - Audit trails for role changes and data-access events
+- UI/UX
+  - Consistent visual language with the rest of AquaTrace app
+  - Mobile-first responsive layouts; smooth transitions
+  - Accessible components with proper aria labels and keyboard navigation
+- Data handling
+  - Use useState<Type[]>([]) for arrays; initialize all array state properly
+  - Guard API results: const list = Array.isArray(response?.data) ? response.data : []
+  - Use data ?? [] for Supabase results
+  - Safe access patterns: obj?.prop?.nested
+  - Form validation with clear error states and inline messages
+- Offline-first behavior
+  - Local storage schema with migrations; clear versioning
+  - Background sync with exponential backoff (retry queue)
+  - Conflict resolution strategy (e.g., last-write-wins with timestamp, or technician-hosted precedence)
+- Barcode/Camera
+  - Barcode/QR scanning flow with fallback input
+  - Camera permissions handling and graceful fallbacks when denied
+- Photos
+  - Image compression on capture
+  - Preserve EXIF metadata where possible
+  - Local photo references (URI) and upload queue
+- GPS
+  - Request location permissions; handle denial gracefully
+  - Capture high-accuracy coordinates; show accuracy and timestamp
+- Sync
+  - Implement a robust sync pipeline:
+    - Upload new/updated pickups, photos, and barcode scans
+    - Handle partial failures; retry with exponential backoff
+    - On success, mark local records as synced and push server-side IDs
+  - Conflict resolution rules documented in code comments
+- Security
+  - Token-based authentication (JWT/OAuth) with refresh
+  - Encrypt sensitive local data at rest where applicable
+  - Validate all inputs before sending to server
 
 ### Backend
-- APIs and Microservices
-  - RBAC API: endpoints to fetch roles, permissions, create/update/delete roles, and audit logs
-  - User API: fetch users, assign roles, invite users, suspend/reactivate
-  - Access Control Middleware: reusable function to verify permissions on routes
-  - Data APIs for AquaTrace domain ( pickups, readings, lab results, PDFs )
-  - PDF generation endpoint for Lab Manager to compile and distribute reports
-- Database Tables
-  - roles: id, name ( Technician, Lab Tech, Lab Manager, Admin, Customer viewer ), description
-  - permissions: id, role_id, resource, action, scope (e.g., global, owner, ownReport)
-  - role_changes_audit: id, actor_id, target_user_id, from_role, to_role, timestamp, reason
-  - users: id, email, name, role_id, status, invitation_token, invited_at, last_login
-  - pickups: id, technician_id, location, gps, readings, photos, status
-  - lab_results: id, pickup_id, spc, total_coliform, approved_by, approved_at, pdf_link
-  - customer_reports: id, customer_id, pickup_id, accessible_by_customer_only
-- Business Logic
-  - Attribute-based access: customers can only view their reports; technicians only see their pickups; labs see assigned lab tasks
-  - Data privacy: ensure that queries join with ownership constraints
-  - Audit logging: record role changes, login events, data access, and distribution actions
+- APIs
+  - Create/Update Pickup (technician create/update)
+  - Upload Photo
+  - Scan Barcode association
+  - Sync endpoint that accepts batched offline changes
+  - Retrieve Sample Details, Lab Results (SPC, Total Coliform), Audit Trails
+  - Admin endpoints for users, customers, invoicing as per broader project needs
+  - API versioning and optimistic concurrency controls (etag or version field)
+- Database
+  - Tables/collections:
+    - pickups: id, vialId, pH, chlorine, volume, timestamp, gpsLat, gpsLon, gpsAccuracy, technicianId, customerSiteNotes, status, synced, serverId, createdAt, updatedAt
+    - photos: id, pickupId, localUri, serverUrl, metadata (EXIF), createdAt, synced
+    - barcodes: id, vialId, scannedAt, location, technicianId
+    - audit_trail: id, pickupId, action, byUserId, timestamp
+    - lab_results: id, pickupId, SPC, TotalColiform, status, approvedBy, approvedAt
+    - status_history: id, pickupId, status, timestamp, note
+  - Data integrity:
+    - Use nullish coalescing in server responses
+    - Validate required fields server-side; return structured error messages
+- Sync rules
+  - Endpoint to fetch pending changes for a technician
+  - Resolve conflicts using a clear policy; provide a mechanism to audit conflicts
 
 ### Integration
-- Frontend ↔ Backend
-  - Consistent auth token handling
-  - RBAC middleware on protected routes
-  - Data-fetch hooks that respect permissions and owner constraints
-- External Services
-  - PDF generation service (stub or integrated)
-  - Email/SMS notification for invitations
-  - GIS/location services for GPS capture on mobile
-- Data Consistency
-  - Validation layers on both client and server
-  - Null-safety in arrays and API responses (see runtime safety rules)
+- Data flow
+  - Technician workflow: local capture -> local queue -> background sync -> server -> lab results -> admin distribution
+  - Samples List reads from local storage first; periodically reconcile with server when online
+  - Sample Details page merges local and server state with deterministic precedence
+- Offline-first to online transition
+  - Sync service triggers on network availability or manual sync
+  - Background tasks with exponential backoff on failures
+- Third-party services
+  - Barcode scanning library
+  - Camera APIs
+  - Location services
+  - PDF generation for reports on the Lab/Admin side (as needed for distribution)
 
 ## User Experience Flow
-1. Admin logs in
-   - Sees Admin Console with Role Matrix
-   - Creates/edits roles and assigns permissions
-   - Invites new users; selects a role
-2. Admin invites a Technician
-   - Email invite with onboarding steps
-   - Technician creates account, lands on their mobile dashboard
-3. Technician Mobile Experience
-   - Logs in on mobile; sees assigned pickups
-   - Starts a pickup: capture GPS, log pH and Chlorine, snap photos
-   - Syncs data when online; app stores offline edits
-4. Lab Tech Experience
-   - Sees new pickups assigned for testing
-   - Inputs SPC and Total Coliform results; saves
-5. Lab Manager Experience
-   - Reviews lab results
-   - Approves results and triggers PDF generation
-   - Distributes PDF to customer; audit logs updated
-6. Customer Viewer Experience
-   - Logs in with Customer viewer role
-   - Views only their reports; cannot modify data
-7. Admin Audit
-   - Admin reviews role-change events and access logs; exports as needed
+1) Technician registers in the mobile app and lands on Technician Dashboard.
+2) Technician taps “New Pickup” (or scans a vial barcode) to start a pickup entry.
+3) Capture GPS location, timestamp, pH, chlorine, and volume; attach 1+ photos; scan vial barcode; add site notes.
+4) Save as draft (offline-first) or submit/send (if online) to push to server queue.
+5) The Sample List shows all locally stored pickups with statuses. Technician can filter by Status, Date, or search by vialId.
+6) Tap a pickup in the list to open Sample Details Page:
+   - Review readings, photos, GPS, and audit trail
+   - See lab results when available
+   - View status history
+   - Edit fields if in draft/offline
+   - Trigger photo re-upload or re-capture
+7) Use Technician Dashboard to view assigned pickups, capture readings and photos, and monitor sync status.
+8) When network is available, background sync runs with exponential backoff until all offline items are uploaded.
+9) Lab phase: Lab tech logs SPC and Total Coliform; results are uploaded, approved by Lab Manager, and PDFs generated and distributed to customer.
+10) Admin handles customers, invoicing, and AR; reports can be generated and accessed per user permissions.
+11) All sensitive operations are protected by authentication and role-based access control.
 
 ## Technical Specifications
 
-- Data Models: Schema details
-  - roles
-    - id: UUID
-    - name: string (Technician, Lab Tech, Lab Manager, Admin, Customer viewer)
-    - description: string
-  - permissions
-    - id: UUID
-    - role_id: UUID -> roles.id
-    - resource: string (e.g., "pickup", "lab_results", "admin_ui", "reports")
-    - action: string ("read", "create", "update", "delete", "execute")
-    - scope: string ("global", "owner", "ownReport", "organization")
-  - role_changes_audit
-    - id: UUID
-    - actor_id: UUID -> users.id
-    - target_user_id: UUID -> users.id
-    - from_role: string
-    - to_role: string
-    - timestamp: timestamp
-    - reason: string
-  - users
-    - id: UUID
-    - email: string
-    - name: string
-    - role_id: UUID -> roles.id
-    - status: string ("active", "invited", "suspended")
-    - invitation_token: string
-    - invited_at: timestamp
-    - last_login: timestamp
-  - pickups
-    - id: UUID
-    - technician_id: UUID -> users.id
-    - location: string
-    - gps_lat: float
-    - gps_lng: float
-    - readings: object (pH, Chlorine, etc.)
-    - photos: array of string (photo URLs)
-    - status: string ("scheduled", "in_progress", "completed")
-  - lab_results
-    - id: UUID
-    - pickup_id: UUID -> pickups.id
-    - spc: float
-    - total_coliform: float
-    - approved_by: UUID -> users.id
-    - approved_at: timestamp
-    - pdf_link: string
-- API Endpoints: Routes and methods
-  - POST /api/roles
-  - GET /api/roles
-  - GET /api/roles/:id
-  - PUT /api/roles/:id
-  - DELETE /api/roles/:id
-  - POST /api/users/invite
-  - GET /api/users
-  - PATCH /api/users/:id/role
-  - POST /api/audit/logs
-  - GET /api/audit/logs
-  - GET /api/pickups
-  - POST /api/pickups/:id/ readings
-  - POST /api/pickups/:id/photos
-  - POST /api/lab_results
-  - PUT /api/lab_results/:id/approve
-  - GET /api/reports (customer-scoped)
-  - GET /api/reports/:id/pdf
-  - POST /api/reports/:id/distribute
-- Security: Authentication, authorization requirements
-  - JWT/OAuth-based authentication with short-lived tokens
-  - Middleware to enforce access by role and scope
-  - Attribute-based checks (owner, technician assignment, customer ownership)
-  - Audit log persistence on sensitive actions
-- Validation: Input validation rules
-  - Required fields, proper formats (emails, timestamps, lat/lng)
-  - Role and permission integrity checks
-  - Validation of file uploads (photos) and GPS coordinates
+Data Models: Schema Details
+- Pickup
+  - id: string (local)
+  - serverId: string | null
+  - vialId: string
+  - pH: number | null
+  - chlorine: number | null
+  - volume: number (default 100)
+  - timestamp: string (ISO)
+  - gpsLat: number | null
+  - gpsLon: number | null
+  - gpsAccuracy: number | null
+  - technicianId: string
+  - customerSiteNotes: string | null
+  - photos: string[] (local URIs) or separate Photos table with pickupId relation
+  - status: string (Pending | Submitted | Synced | Rejected)
+  - synced: boolean
+  - createdAt: string
+  - updatedAt: string
 
-## Acceptance Criteria
-- [ ] RBAC core can create, read, update, and delete roles and permissions without breaking existing data
-- [ ] Middleware correctly blocks unauthorized pages/APIs and allows permitted ones
-- [ ] All data-fetching and mutations use null-safe patterns (data ?? [], Array.isArray checks, defaults for useState)
-- [ ] Technician mobile workflow supports GPS capture, readings, photo uploads, and offline sync
-- [ ] Lab results flow supports input, approval by Lab Manager, PDF generation, and customer distribution
-- [ ] Customer viewer can access only their reports; no write permissions
-- [ ] Admin UI can invite users and assign roles; audit logs populate correctly
-- [ ] Audit logs: every role change and access event is recorded and queryable
-- [ ] UI adheres to existing design system and accessibility guidelines
+- Photo
+  - id: string
+  - pickupId: string
+  - localUri: string
+  - serverUrl: string | null
+  - exif: object | null
+  - createdAt: string
+  - synced: boolean
 
-## UI/UX Guidelines
-- Maintain consistent styling with AquaTrace UI: typography, color tokens, spacing, and components
-- Permission-aware affordances: show/hide or disable UI controls based on hasPermission
-- Mobile-first patterns for Technician Dashboard; graceful fallback on larger screens
-- Clear feedback for success/failure with actionable error messages
-- Disabled states for unauthorized actions with guidance on how to request access
+- BarcodeScan
+  - id: string
+  - vialId: string
+  - pickupId: string | null
+  - scannedAt: string
+  - technicianId: string
 
-## Mandatory Coding Standards — Runtime Safety
+- AuditTrail
+  - id: string
+  - pickupId: string
+  - action: string (Created, Updated, Synced, etc.)
+  - byUserId: string
+  - timestamp: string
 
+- LabResult
+  - id: string
+  - pickupId: string
+  - SPC: number | null
+  - TotalColiform: number | null
+  - status: string (PendingApproval, Approved, Rejected)
+  - approvedBy: string | null
+  - approvedAt: string | null
+
+- StatusHistory
+  - id: string
+  - pickupId: string
+  - status: string
+  - timestamp: string
+  - note: string | null
+
+API Endpoints (Routes and Methods)
+- POST /api/pickups
+  - Create a new pickup from technician draft
+  - Body: { vialId, pH, chlorine, volume, timestamp, gpsLat, gpsLon, gpsAccuracy, technicianId, customerSiteNotes, photos: [{ localUri, exif }] }
+- PATCH /api/pickups/{id}
+  - Update a pickup
+  - Body: partial fields (pH, chlorine, photos, notes, status)
+- POST /api/pickups/{id}/photos
+  - Upload a photo for a pickup
+  - Body: form-data with file + metadata
+- POST /api/pickups/sync
+  - Sync batched offline pickups from device
+  - Body: { items: [pickupDrafts], photos: [...], barcodes: [...] }
+- GET /api/pickups/{id}
+  - Get complete pickup with lab results and audit trail
+- GET /api/pickups?technicianId=&status=&dateFrom=&dateTo=
+  - List pickups for technician with filters
+- GET /api/lab-results/{pickupId}
+  - Retrieve lab results for a pickup
+- POST /api/lab-results/{pickupId}
+  - Submit SPC and Total Coliform results
+- POST /api/admin/approve-lab-results
+  - Lab Manager approves and triggers PDF generation and distribution
+- GET /api/reports/customer/{customerId}
+  - Generate or retrieve PDF reports for a customer
+
+Security
+- Authentication: OAuth 2.0 / JWT with role-based access control (Technician, LabTech, LabManager, Admin, Viewer)
+- Transport: HTTPS
+- Access control: Verify technicianId in requests; enforce permissions on server
+- Data privacy: Encrypt sensitive local data at rest; minimal personally identifiable data transmitted; audit logs
+
+Validation
+- Frontend:
+  - Validate vialId present; pH in 0-14; chlorine non-negative; GPS coordinates valid when captured
+  - Ensure photos array length > 0 for submitted pickups; otherwise allow draft
+  - Timestamps must be valid ISO strings
+- Backend:
+  - Validate all required fields; reject invalid data with explicit error messages
+  - Ensure serverId uniqueness where applicable
+  - Validate lab results keys when provided
+
+Acceptance Criteria
+- [ ] Offline-first flow works: data is captured while offline and syncs automatically with conflict resolution and retry queue
+- [ ] All lists and detail views guard against null/undefined data using Array.isArray checks and nullish coalescing
+- [ ] GPS, barcode scanning, and photo capture flow work on device with proper permission handling
+- [ ] Sample List supports filters (status, date) and search by vialId
+- [ ] Sample Details page shows complete record including audit trail and status history
+- [ ] Technician Dashboard shows assigned pickups, sync status, and quick capture
+- [ ] Backend API supports batched sync and proper conflict handling; lab results flow complete with PDF generation and distribution
+
+UI/UX Guidelines
+- Match AquaTrace styling: typography, color palette, spacing, and components
+- Clear micro-interactions for offline/sync status
+- Accessible controls with good tap targets on mobile
+- Consistent form labeling and inline validation
+- Provide empty-state illustrations/messages for no data scenarios
+
+Mandatory Coding Standards — Runtime Safety
 CRITICAL: Follow these rules in ALL generated code to prevent runtime crashes.
 
-1. Supabase-like query results
-   - Always use nullish coalescing: const items = data ?? []
-   - When assigning from response: const list = Array.isArray(response?.data) ? response.data : []
-2. Array methods safety
-   - Guard before map/filter/reduce: (items ?? []).map(...); or Array.isArray(items) ? items.map(...) : []
-3. React useState for arrays/objects
-   - Initialize with correct type: const [items, setItems] = useState<Type[]>([])
-4. API response shapes
-   - Validate: const list = Array.isArray(response?.data) ? response.data : []
-5. Optional chaining
-   - Use for nested API responses: obj?.property?.nested
-6. Destructuring with defaults
-   - const { items = [], count = 0 } = response ?? {}
+1. Supabase query results: Always use nullish coalescing — const items = data ?? []. Supabase returns null (not []) when there are no rows.
+2. Array methods: Never call on a value that could be null/undefined/non-array. Guard:
+   - (items ?? []).map(...) or Array.isArray(items) ? items.map(...) : []
+3. React useState for arrays/objects: Always initialize with the correct type — useState<Type[]>([])
+4. API response shapes: Always validate — const list = Array.isArray(response?.data) ? response.data : []
+5. Optional chaining: Use obj?.property?.nested when accessing nested objects from API responses or database queries
+6. Destructuring with defaults: const { items = [], count = 0 } = response ?? {}
 
-## Project Context Alignment
-- Target Feature: RBAC across five roles with permission mapping and enforcement
-- Attribute-based access: customer views only their reports; techs view their pickups
-- Audit logs for role changes and access events
-- Admin UI to manage roles, permissions, and invites
-- Associated Pages mapping to project pages: page_005 (Technician Mobile Dashboard), page_009 (Lab Tech), page_011 (Lab Manager), page_013 (Admin Console), page_015 (Customer Portal)
-- Ensure workflow supports AquaTrace processes: pickup, onsite testing, lab testing, approval, PDF distribution
+Notes for Implementation Tools
+- Provide a single cohesive development prompt that can be fed to an AI coding assistant or generator.
+- Include explicit folder structure, component/interface definitions, and example code snippets demonstrating safe handling patterns (null checks, guards, and defaults).
+- Include test scaffolds: unit tests for data models, integration tests for API endpoints, and end-to-end test scenarios for the offline-to-online sync flow.
+- Include mocks for Supabase or backend services to enable isolated local development.
 
----
+Project Context Mapping
+- TARGET FEATURE: Technician GPS Pickup & Offline Capture
+- Core requirements include: mobile GPS, photo capture, barcode scanning, offline storage, sync, and status-driven pages
+- Associated Pages (to be implemented in the app router/navigation):
+  - page_005: Technician Dashboard (Mobile)
+  - page_006: Sample Pickup Form (Technician)
+  - page_007: Technician Sample List
+  - page_008: Sample Details Page
+- Multi-role workflow including Lab Tech and Admin with eventual PDF generation and distribution
 
-If you’d like, I can produce a concrete starter code scaffold (TypeScript/React + Node.js) with the RBAC data model, middleware, sample UI components, and example API routes that adhere to the runtime safety rules above.
+Deliverables
+- A complete, detailed prompt that can be used by an AI development tool to generate:
+  - Frontend React Native (or Flutter) code with offline-first storage
+  - Backend API endpoints and database schema
+  - Sync service with retry/backoff and conflict resolution
+  - Data models, validators, and utility functions enforcing runtime safety
+- Include sample data seeds, migration scripts, and a minimal test suite
+- Provide explicit code patterns that guarantee runtime safety as described in the Runtime Safety section
+
+End of Prompt.
 
 ## Implementation Notes
 
