@@ -20,7 +20,8 @@ import { LabTechnicianDashboardPage } from '@/pages/dashboard/lab-technician-das
 import { LabResultsEntryPage } from '@/pages/dashboard/lab-results-entry'
 import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
 import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
-import { ApprovalsPage } from '@/pages/dashboard/approvals'
+import { LabManagerDashboardPage } from '@/pages/dashboard/lab-manager-dashboard'
+import { ApprovalDetailsPage } from '@/pages/dashboard/approval-details'
 import { ReportsPage } from '@/pages/dashboard/reports'
 import { CustomersPage } from '@/pages/dashboard/customers'
 import { InvoicingPage } from '@/pages/dashboard/invoicing'
@@ -129,7 +130,14 @@ export const router = createBrowserRouter([
           { path: 'import', element: <LabCSVImportPage /> },
         ],
       },
-      { path: 'approvals', element: <ApprovalsPage /> },
+      {
+        path: 'approvals',
+        element: <Outlet />,
+        children: [
+          { index: true, element: <LabManagerDashboardPage /> },
+          { path: ':id', element: <ApprovalDetailsPage /> },
+        ],
+      },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'invoicing', element: <InvoicingPage /> },

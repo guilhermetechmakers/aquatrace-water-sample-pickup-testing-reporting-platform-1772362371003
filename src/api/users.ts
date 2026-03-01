@@ -21,6 +21,7 @@ export async function fetchProfiles(): Promise<ProfileUser[]> {
 const MOCK_USERS: ProfileUser[] = [
   { id: '1', email: 'admin@example.com', display_name: 'Admin', role: 'ADMIN', status: 'active', last_login: new Date().toISOString(), invited_at: null, created_at: new Date().toISOString() },
   { id: '2', email: 'tech@example.com', display_name: 'Technician', role: 'TECHNICIAN', status: 'active', last_login: null, invited_at: null, created_at: new Date().toISOString() },
+  { id: '3', email: 'labmanager@example.com', display_name: 'Lab Manager', role: 'LAB_MANAGER', status: 'active', last_login: null, invited_at: null, created_at: new Date().toISOString() },
 ]
 
 export async function fetchUsers(): Promise<ProfileUser[]> {
@@ -31,6 +32,21 @@ export async function fetchUsers(): Promise<ProfileUser[]> {
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as ProfileUser[]
+}
+
+/** Fetch users with Lab Manager or Admin role for reassignment dropdown */
+export async function fetchLabManagers(): Promise<ProfileUser[]> {
+  if (!isSupabaseConfigured()) {
+    return MOCK_USERS.filter((u) => ['ADMIN', 'LAB_MANAGER'].includes(u.role))
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, display_name, role, status, last_login, invited_at, created_at')
+    .in('role', ['LAB_MANAGER', 'ADMIN'])
+    .order('display_name', { ascending: true })
+  if (error) throw error
+  const list = data ?? []
+  return Array.isArray(list) ? (list as ProfileUser[]) : []
 }
 
 export async function updateProfileRole(
