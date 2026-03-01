@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
+import { createAuditLog } from '@/api/audit'
 import type {
   LabSample,
   LabResultEntry,
@@ -301,11 +302,19 @@ export async function createResult(
     )
   }
 
-  return {
+  const result = {
     id: resultId,
     version: (inserted as { version: number }).version ?? 1,
     status: (inserted as { status: string }).status ?? 'draft',
   }
+  createAuditLog({
+    userId: enteredBy,
+    actionType: 'WRITE',
+    resourceType: 'TEST_RESULT',
+    resourceId: resultId,
+    metadata: { sampleId: input.sampleId, spc: input.spcValue, totalColiform: input.totalColiformValue },
+  })
+  return result
 }
 
 export async function updateResult(
@@ -337,6 +346,14 @@ export async function updateResult(
     .single()
 
   if (error) throw new Error(error.message)
+
+  createAuditLog({
+    userId: enteredBy,
+    actionType: 'WRITE',
+    resourceType: 'TEST_RESULT',
+    resourceId: resultId,
+    metadata: { version: nextVersion, spc: input.spcValue, totalColiform: input.totalColiformValue },
+  })
 
   const now = new Date().toISOString()
   await supabase.from('result_versions').insert({

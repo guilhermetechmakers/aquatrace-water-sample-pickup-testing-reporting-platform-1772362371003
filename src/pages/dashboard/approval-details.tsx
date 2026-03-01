@@ -72,6 +72,7 @@ import {
 import { useRBAC } from '@/hooks/useRBAC'
 import { useAuth } from '@/contexts/auth-context'
 import { supabase } from '@/lib/supabase'
+import { createAuditLog } from '@/api/audit'
 import { fetchLabManagers } from '@/api/users'
 import type { ProfileUser } from '@/api/users'
 import { toast } from 'sonner'
@@ -308,9 +309,17 @@ export function ApprovalDetailsPage() {
         })),
       },
       {
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
           toast.success('PDF generated')
           refetchReport()
+          createAuditLog({
+            userId: user?.id ?? '',
+            userName: user?.displayName ?? user?.email ?? undefined,
+            actionType: 'EXPORT',
+            resourceType: 'REPORT',
+            resourceId: variables.customerId ?? id ?? '',
+            metadata: { approvalId: id, reportId: report?.id, version: selectedVersion },
+          })
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : 'PDF generation failed'),
       }
@@ -349,7 +358,17 @@ export function ApprovalDetailsPage() {
         pickupDate: safeApproval.createdAt ? format(new Date(safeApproval.createdAt), 'PP') : undefined,
       },
       {
-        onSuccess: () => toast.success('Email sent'),
+        onSuccess: (_data, variables) => {
+          toast.success('Email sent')
+          createAuditLog({
+            userId: user?.id ?? '',
+            userName: user?.displayName ?? user?.email ?? undefined,
+            actionType: 'DISTRIBUTE',
+            resourceType: 'REPORT',
+            resourceId: report?.id ?? '',
+            metadata: { reportId: report?.id, version: variables.version, recipient: variables.recipient },
+          })
+        },
         onError: (e) => toast.error(e instanceof Error ? e.message : 'Email failed'),
       }
     )

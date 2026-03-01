@@ -1,9 +1,11 @@
 /**
  * Lab Manager Approval & Audit API
  * Fetches approvals, performs approve/reject/corrective/reassign, audit trail, signatures
+ * Integrates with compliance audit log for immutable audit trail
  */
 
 import { supabase } from '@/lib/supabase'
+import { createAuditLog } from '@/api/audit'
 import type {
   ApprovalRequest,
   ApprovalStatus,
@@ -410,6 +412,23 @@ export async function approveApproval(
     signature_id: sigId,
     payload_hash: payloadHash,
   })
+
+  createAuditLog({
+    userId,
+    userName: payload.signature?.name,
+    actionType: 'APPROVE',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { resultId, approvalId: id, signatureId: sigId },
+  })
+  createAuditLog({
+    userId,
+    userName: payload.signature?.name,
+    actionType: 'SIGN_OFF',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { resultId, approvalId: id, payloadHash },
+  })
 }
 
 /** Reject an approval request */
@@ -462,6 +481,14 @@ export async function rejectApproval(
     signature_id: sigId,
     payload_hash: payloadHash ?? '',
   })
+
+  createAuditLog({
+    userId,
+    actionType: 'REJECT',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { reason: payload.reason },
+  })
 }
 
 /** Request corrective action */
@@ -491,6 +518,14 @@ export async function requestCorrectiveAction(
     by_user_id: userId,
     details: payload.description,
   })
+
+  createAuditLog({
+    userId,
+    actionType: 'WRITE',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { correctiveAction: payload.description, dueDate: payload.dueDate, assignedTo: payload.assignedTo },
+  })
 }
 
 /** Reassign approval to another manager */
@@ -511,6 +546,14 @@ export async function reassignApproval(
     action: 'reassigned',
     by_user_id: userId,
     details: payload.message ?? `Reassigned to ${payload.newAssigneeId}`,
+  })
+
+  createAuditLog({
+    userId,
+    actionType: 'UPDATE',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { reassignedTo: payload.newAssigneeId, message: payload.message },
   })
 }
 
@@ -558,6 +601,14 @@ export async function addApprovalComment(
     action: 'comment_added',
     by_user_id: userId,
     details: message.slice(0, 200),
+  })
+
+  createAuditLog({
+    userId,
+    actionType: 'WRITE',
+    resourceType: 'APPROVAL',
+    resourceId: id,
+    metadata: { commentPreview: message.slice(0, 100) },
   })
 
   return comment

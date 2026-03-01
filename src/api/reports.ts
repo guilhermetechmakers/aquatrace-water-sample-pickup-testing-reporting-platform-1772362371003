@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
+import { createAuditLog } from '@/api/audit'
 import type {
   Report,
   ReportVersion,
@@ -248,11 +249,23 @@ export async function generateReportPdf(payload: {
   }
 
   const data = (await res.json()) as { reportId?: string; version?: number; pdfUrl?: string }
-  return {
+  const result = {
     reportId: data.reportId ?? '',
     version: data.version ?? 1,
     pdfUrl: data.pdfUrl ?? '',
   }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id) {
+    createAuditLog({
+      userId: user.id,
+      userName: user.email ?? undefined,
+      actionType: 'DOWNLOAD',
+      resourceType: 'REPORT',
+      resourceId: result.reportId || payload.approvalId,
+      metadata: { approvalId: payload.approvalId, customerId: payload.customerId, version: result.version },
+    })
+  }
+  return result
 }
 
 /** Trigger email distribution via Edge Function */
@@ -283,7 +296,21 @@ export async function sendReportEmail(payload: {
   }
 
   const data = (await res.json()) as { success?: boolean; messageId?: string }
-  return { success: data.success ?? true, messageId: data.messageId }
+  const result = { success: data.success ?? true, messageId: data.messageId }
+  if (result.success) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.id) {
+      createAuditLog({
+        userId: user.id,
+        userName: user.email ?? undefined,
+        actionType: 'DISTRIBUTE',
+        resourceType: 'REPORT',
+        resourceId: payload.reportId,
+        metadata: { version: payload.version, recipient: payload.recipient, customerName: payload.customerName },
+      })
+    }
+  }
+  return result
 }
 
 /** Trigger reissue (create new version) via Edge Function */
@@ -316,11 +343,23 @@ export async function reissueReport(payload: {
   }
 
   const data = (await res.json()) as { reportId?: string; version?: number; pdfUrl?: string }
-  return {
+  const result = {
     reportId: data.reportId ?? '',
     version: data.version ?? 1,
     pdfUrl: data.pdfUrl ?? '',
   }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id) {
+    createAuditLog({
+      userId: user.id,
+      userName: user.email ?? undefined,
+      actionType: 'EXPORT',
+      resourceType: 'REPORT',
+      resourceId: result.reportId,
+      metadata: { approvalId: payload.approvalId, customerId: payload.customerId, version: result.version, reissue: true },
+    })
+  }
+  return result
 }
 
 /** Report with metadata for list views and customer portal */

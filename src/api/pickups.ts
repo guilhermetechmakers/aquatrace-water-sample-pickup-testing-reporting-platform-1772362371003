@@ -3,6 +3,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
+import { createAuditLog } from '@/api/audit'
 import type { Pickup } from '@/types/rbac'
 
 const isSupabaseConfigured = () =>
@@ -95,7 +96,15 @@ export async function createPickup(input: CreatePickupInput, _technicianId?: str
     .single()
 
   if (error) throw error
-  return rowToPickup(data as Record<string, unknown>)
+  const pickup = rowToPickup(data as Record<string, unknown>)
+  createAuditLog({
+    userId: input.technician_id,
+    actionType: 'CREATE',
+    resourceType: 'PICKUP',
+    resourceId: pickup.id,
+    metadata: { location: input.location, status: pickup.status },
+  })
+  return pickup
 }
 
 /** Update a pickup */
@@ -112,7 +121,18 @@ export async function updatePickup(id: string, input: UpdatePickupInput): Promis
 
   const { data, error } = await supabase.from('pickups').update(payload).eq('id', id).select('*').single()
   if (error) throw error
-  return rowToPickup(data as Record<string, unknown>)
+  const pickup = rowToPickup(data as Record<string, unknown>)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id) {
+    createAuditLog({
+      userId: user.id,
+      actionType: 'UPDATE',
+      resourceType: 'PICKUP',
+      resourceId: id,
+      metadata: { status: input.status, location: input.location },
+    })
+  }
+  return pickup
 }
 
 /** Add readings to a pickup (merge with existing) */

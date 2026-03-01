@@ -22,6 +22,7 @@ import { LabCSVImportPage } from '@/pages/dashboard/lab-csv-import'
 import { ThresholdConfigPage } from '@/pages/dashboard/admin/threshold-config'
 import { AdminBillingPage } from '@/pages/dashboard/admin/billing'
 import { DataExportImportPage } from '@/pages/dashboard/admin/data-export-import'
+import { AdminAuditPage } from '@/pages/dashboard/admin/audit'
 import { AdminNotificationsPage } from '@/pages/dashboard/admin/notifications'
 import { AdminNotificationsConfigPage } from '@/pages/dashboard/admin/notifications-config'
 import { AdminTemplatesPage } from '@/pages/dashboard/admin/templates'
@@ -195,11 +196,12 @@ export const router = createBrowserRouter([
           { path: 'templates', element: <AdminTemplatesPage /> },
           { path: 'template-localization/:templateId', element: <TemplateLocalizationPage /> },
           { path: 'data-export-import', element: <DataExportImportPage /> },
+          { path: 'audit', element: <AdminAuditPage /> },
         ],
       },
       { path: 'alerts', element: <AlertsDashboardPage /> },
       { path: 'users', element: <AdminPage /> },
-      { path: 'audit', element: <AdminPage /> },
+      { path: 'audit', element: <AdminAuditPage /> },
       { path: 'settings', element: <Navigate to="/dashboard/profile" replace /> },
       { path: 'profile', element: <ProfilePage /> },
     ],
